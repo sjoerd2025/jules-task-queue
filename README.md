@@ -14,7 +14,7 @@
     <a href="https://github.com/ihildy/jules-task-queue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ihildy/jules-task-queue?style=for-the-badge" /></a>
     <a href="https://github.com/ihildy/jules-task-queue/stargazers"><img src="https://img.shields.io/github/stars/ihildy/jules-task-queue?style=for-the-badge" /></a>
     <a href="https://github.com/ihildy/jules-task-queue/issues"><img src="https://img.shields.io/github/issues/ihildy/jules-task-queue?style=for-the-badge" /></a>
-    <a href="https://jules.google"><img src="https://img.shields.io/badge/Built%20with-Jules-715cd7?link=https://jules.google" alt="Built with Jules" /></a>
+    <a href="https://jules.google"><img src="https://img.shields.io/badge/Built%20with-Jules-715cd7?style=for-the-badge" alt="Built with Jules" /></a>
   </p>
 </div>
 
