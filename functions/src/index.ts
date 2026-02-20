@@ -25,18 +25,18 @@ function getAppHostingUrl(): string {
   }
 
   if (projectId) {
-    console.log(
+    const constructedUrl = `https://jules-task-queue--${projectId}.${region}.hosted.app`;
+    logger.info(
       "Could not determine App Hosting URL. trying to construct from project info. Detected project info:",
-    );
-    console.log("Project ID:", projectId);
-    console.log("Region:", region);
-    console.log("Node env:", process.env.NODE_ENV);
-    console.log(
-      "Constructed URL:",
-      `https://jules-task-queue--${projectId}.${region}.hosted.app`,
+      {
+        projectId,
+        region,
+        nodeEnv: process.env.NODE_ENV,
+        constructedUrl,
+      },
     );
     // Firebase App Hosting URL format - users will need to update BACKEND_ID
-    return `https://jules-task-queue--${projectId}.${region}.hosted.app`;
+    return constructedUrl;
   }
 
   throw new Error(
