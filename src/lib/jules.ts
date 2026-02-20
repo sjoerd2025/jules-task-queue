@@ -52,11 +52,11 @@ export function analyzeComment(comment: GitHubComment): CommentAnalysis {
     patterns_matched = taskLimitMatches;
   }
 
-  // Check for working patterns (higher confidence than task limit)
+  // Check for working patterns (only if no task limit was detected)
   const workingMatches = WORKING_PATTERNS.filter((pattern) =>
     body.includes(pattern.toLowerCase()),
   );
-  if (workingMatches.length > 0 && confidence < 0.8) {
+  if (workingMatches.length > 0 && classification !== "task_limit") {
     classification = "working";
     confidence = Math.min(1.0, workingMatches.length * 0.3 + 0.5);
     patterns_matched = workingMatches;
@@ -97,8 +97,8 @@ export function isWorkingComment(commentBody: string): boolean {
  */
 export function isJulesBot(username: string): boolean {
   const lowerUsername = username.toLowerCase();
-  return JULES_BOT_USERNAMES.some((botName) =>
-    lowerUsername.includes(botName.toLowerCase().replace("[bot]", "")),
+  return JULES_BOT_USERNAMES.some(
+    (botName) => lowerUsername === botName.toLowerCase(),
   );
 }
 
