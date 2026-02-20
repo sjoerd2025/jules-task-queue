@@ -121,7 +121,6 @@ export const adminRouter = createTRPCRouter({
         const nextItem = logs.pop();
         nextCursor = nextItem?.id;
       }
-
       return {
         logs: logs.map(
           (log: {
@@ -132,19 +131,14 @@ export const adminRouter = createTRPCRouter({
             createdAt: Date;
             payload: string | null;
           }) => {
-            let payload;
-            try {
-              payload = log.payload ? JSON.parse(log.payload) : null;
-            } catch {
-              payload = { error: "Failed to parse payload" };
-            }
+            // Payload is returned as raw string to avoid expensive JSON parsing on server
             return {
               id: log.id,
               eventType: log.eventType,
               success: log.success,
               error: log.error,
               createdAt: log.createdAt,
-              payload,
+              payload: log.payload,
             };
           },
         ),
