@@ -236,31 +236,49 @@ export class InstallationService {
    */
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
-    const results = [];
+    const concurrencyLimit = 5;
+    const results: Array<{
+      installationId: number;
+      success: boolean;
+      data?: unknown;
+      error?: string;
+    }> = new Array(installations.length);
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+    // Worker pool pattern to limit concurrency while processing all items
+    let index = 0;
+    const next = async () => {
+      while (index < installations.length) {
+        const i = index++;
+        const installation = installations[i];
+        if (!installation) break;
+
+        try {
+          const synced = await this.syncInstallation(installation.id);
+          results[i] = {
+            installationId: installation.id,
+            success: true,
+            data: synced,
+          };
+        } catch (error) {
+          logger.error(
+            { error },
+            `Failed to sync installation ${installation.id}`,
+          );
+          results[i] = {
+            installationId: installation.id,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       }
-    }
+    };
+
+    const workers = Array.from({ length: concurrencyLimit }, () => next());
+    await Promise.all(workers);
 
     return results;
   }
+
 
   /**
    * Get installation health status
