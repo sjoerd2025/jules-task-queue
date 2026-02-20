@@ -298,21 +298,29 @@ async function handleInstallationRepositoriesEvent(
           `Creating Jules labels in ${repositories.length} newly added repositories`,
         );
 
-        await Promise.allSettled(
-          repositories.map(async (repo) => {
-            const owner =
-              repo.owner?.login || repo.full_name.split("/")[0] || "unknown";
-
-            // Save repository to label preferences
-            await prisma.labelPreferenceRepository.create({
-              data: {
+        // Optimize: Batch insert label preferences
+        if (repositories.length > 0) {
+          await prisma.labelPreferenceRepository.createMany({
+            data: repositories.map((repo) => {
+              const owner =
+                repo.owner?.login || repo.full_name.split("/")[0] || "unknown";
+              return {
                 labelPreferenceId: labelPreference.id,
                 repositoryId: BigInt(repo.id),
                 name: repo.name,
                 fullName: repo.full_name,
                 owner: owner,
-              },
-            });
+              };
+            }),
+            skipDuplicates: true,
+          });
+        }
+
+        // Create labels in the repositories (concurrently)
+        await Promise.allSettled(
+          repositories.map(async (repo) => {
+            const owner =
+              repo.owner?.login || repo.full_name.split("/")[0] || "unknown";
 
             // Create labels in the repository
             return createJulesLabelsForRepository(
