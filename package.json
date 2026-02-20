@@ -6,6 +6,7 @@
     "**/*": "prettier --write --ignore-unknown"
   },
   "scripts": {
+    "test": "vitest run",
     "dev": "prisma generate && next dev --turbopack",
     "build": "prisma generate && next build",
     "build:selfhosted": "prisma generate && SKIP_ENV_VALIDATION=true next build",
