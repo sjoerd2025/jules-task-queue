@@ -3,6 +3,7 @@ import logger from "@/lib/logger";
 import { getUserAccessToken } from "@/lib/token-manager";
 import { db } from "@/server/db";
 import { toSafeNumber } from "@/lib/number";
+import { retry } from "@/lib/retry";
 import type {
   CommentAnalysis,
   CommentClassification,
@@ -171,6 +172,112 @@ export async function upsertJulesTask(params: TaskCreationParams) {
 }
 
 /**
+ * Check Jules comments on an issue and determine next action - extracted logic
+ */
+export async function analyzeLatestJulesComment(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  minConfidence: number = 0.6,
+  installationId?: number,
+): Promise<{
+  action: CommentClassification;
+  comment?: GitHubComment;
+  analysis?: CommentAnalysis;
+}> {
+  // Get all comments on the issue
+  const comments = await githubClient.getIssueComments(
+    owner,
+    repo,
+    issueNumber,
+    installationId,
+  );
+
+  // Filter for Jules comments (most recent first)
+  const julesComments = comments
+    .filter((comment) => comment.user && isJulesBot(comment.user.login))
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+  if (julesComments.length === 0) {
+    logger.info(
+      `No Jules comments found for ${owner}/${repo}#${issueNumber}`,
+    );
+    return { action: "no_action" };
+  }
+
+  // Analyze the most recent Jules comment
+  const latestComment = julesComments[0] as GitHubComment;
+  const analysis = analyzeComment(latestComment);
+
+  logger.info(`Comment analysis for ${owner}/${repo}#${issueNumber}:`, {
+    classification: analysis.classification,
+    confidence: analysis.confidence,
+    patterns: analysis.patterns_matched,
+    age_minutes: analysis.age_minutes,
+  });
+
+  // Check if comment is too old (older than 2 hours might be stale)
+  if (analysis.age_minutes > 120) {
+    logger.info(
+      `Latest Jules comment is ${analysis.age_minutes} minutes old, treating as stale`,
+    );
+    return {
+      action: "no_action",
+      comment: latestComment,
+      analysis,
+    };
+  }
+
+  // Apply confidence threshold
+  if (analysis.confidence < minConfidence) {
+    logger.info(
+      `Comment confidence ${analysis.confidence} below threshold ${minConfidence}, treating as uncertain`,
+    );
+
+    // For uncertain comments, check if we have multiple recent comments
+    const recentComments = julesComments.filter(
+      (comment) =>
+        (Date.now() - new Date(comment.created_at).getTime()) /
+          (1000 * 60) <
+        30,
+    );
+
+    if (recentComments.length > 1) {
+      // Analyze the second most recent comment for context
+      const secondAnalysis = analyzeComment(
+        recentComments[1] as GitHubComment,
+      );
+      if (secondAnalysis.confidence >= minConfidence) {
+        logger.info(
+          `Using second comment with higher confidence: ${secondAnalysis.confidence}`,
+        );
+        return {
+          action: secondAnalysis.classification,
+          comment: recentComments[1] as GitHubComment,
+          analysis: secondAnalysis,
+        };
+      }
+    }
+
+    return {
+      action: "unknown",
+      comment: latestComment,
+      analysis,
+    };
+  }
+
+  // Return successful analysis
+  return {
+    action: analysis.classification,
+    comment: latestComment,
+    analysis,
+  };
+}
+
+/**
  * Check Jules comments on an issue and determine next action
  */
 export async function checkJulesComments(
@@ -186,136 +293,49 @@ export async function checkJulesComments(
   analysis?: CommentAnalysis;
   retryCount?: number;
 }> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      logger.info(
-        `Checking Jules comments for ${owner}/${repo}#${issueNumber} (attempt ${
-          attempt + 1
-        }/${maxRetries})`,
-      );
-
-      // Get all comments on the issue
-      const comments = await githubClient.getIssueComments(
-        owner,
-        repo,
-        issueNumber,
-        installationId,
-      );
-
-      // Filter for Jules comments (most recent first)
-      const julesComments = comments
-        .filter((comment) => comment.user && isJulesBot(comment.user.login))
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-
-      if (julesComments.length === 0) {
+  try {
+    const { result, lastAttempt } = await retry(
+      async (attempt) => {
         logger.info(
-          `No Jules comments found for ${owner}/${repo}#${issueNumber}`,
+          `Checking Jules comments for ${owner}/${repo}#${issueNumber} (attempt ${
+            attempt + 1
+          }/${maxRetries})`
         );
-        return { action: "no_action", retryCount: attempt };
-      }
-
-      // Analyze the most recent Jules comment
-      const latestComment = julesComments[0] as GitHubComment;
-      const analysis = analyzeComment(latestComment);
-
-      logger.info(`Comment analysis for ${owner}/${repo}#${issueNumber}:`, {
-        classification: analysis.classification,
-        confidence: analysis.confidence,
-        patterns: analysis.patterns_matched,
-        age_minutes: analysis.age_minutes,
-      });
-
-      // Check if comment is too old (older than 2 hours might be stale)
-      if (analysis.age_minutes > 120) {
-        logger.info(
-          `Latest Jules comment is ${analysis.age_minutes} minutes old, treating as stale`,
+        return await analyzeLatestJulesComment(
+          owner,
+          repo,
+          issueNumber,
+          minConfidence,
+          installationId
         );
-        return {
-          action: "no_action",
-          comment: latestComment,
-          analysis,
-          retryCount: attempt,
-        };
-      }
-
-      // Apply confidence threshold
-      if (analysis.confidence < minConfidence) {
-        logger.info(
-          `Comment confidence ${analysis.confidence} below threshold ${minConfidence}, treating as uncertain`,
-        );
-
-        // For uncertain comments, check if we have multiple recent comments
-        const recentComments = julesComments.filter(
-          (comment) =>
-            (Date.now() - new Date(comment.created_at).getTime()) /
-              (1000 * 60) <
-            30,
-        );
-
-        if (recentComments.length > 1) {
-          // Analyze the second most recent comment for context
-          const secondAnalysis = analyzeComment(
-            recentComments[1] as GitHubComment,
+      },
+      {
+        maxRetries,
+        initialDelay: 1000,
+        backoffFactor: 2,
+        onRetry: (error, attempt) => {
+          logger.error(
+            { error },
+            `Attempt ${attempt + 1} failed for ${owner}/${repo}#${issueNumber}:`
           );
-          if (secondAnalysis.confidence >= minConfidence) {
-            logger.info(
-              `Using second comment with higher confidence: ${secondAnalysis.confidence}`,
-            );
-            return {
-              action: secondAnalysis.classification,
-              comment: recentComments[1] as GitHubComment,
-              analysis: secondAnalysis,
-              retryCount: attempt,
-            };
-          }
-        }
-
-        return {
-          action: "unknown",
-          comment: latestComment,
-          analysis,
-          retryCount: attempt,
-        };
+        },
       }
+    );
 
-      // Return successful analysis
-      return {
-        action: analysis.classification,
-        comment: latestComment,
-        analysis,
-        retryCount: attempt,
-      };
-    } catch (error) {
-      lastError = error as Error;
-      logger.error(
-        { error },
-        `Attempt ${attempt + 1} failed for ${owner}/${repo}#${issueNumber}:`,
-      );
+    return { ...result, retryCount: lastAttempt };
+  } catch (error) {
+    logger.error(
+      `All ${maxRetries} attempts failed for ${owner}/${repo}#${issueNumber}:`,
+      error
+    );
 
-      // Wait before retry (exponential backoff)
-      if (attempt < maxRetries - 1) {
-        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
+    return {
+      action: "no_action",
+      retryCount: maxRetries,
+    };
   }
-
-  // All retries failed
-  logger.error(
-    `All ${maxRetries} attempts failed for ${owner}/${repo}#${issueNumber}:`,
-    lastError,
-  );
-
-  return {
-    action: "no_action",
-    retryCount: maxRetries,
-  };
 }
+
 
 /**
  * Handle task limit scenario - queue the task for retry
