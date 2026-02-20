@@ -2,10 +2,22 @@ import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { githubClient } from "@/lib/github";
 import logger from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limiter";
 import { db } from "@/server/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") || "unknown";
+  const rateLimitResult = await checkRateLimit(
+    ip,
+    "/api/github-app/star-check",
+  );
+
+  if (!rateLimitResult.allowed) {
+    logger.warn({ ip }, "Rate limit exceeded");
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const { searchParams } = new URL(req.url);
   const installationId = searchParams.get("installation_id");
 
