@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import logger from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limiter";
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
@@ -37,6 +38,23 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // Rate Limiting
+  // Use x-forwarded-for if available (behind proxy), otherwise fallback to unknown
+  // Note: specific hosting platforms might require different headers (e.g. CF-Connecting-IP)
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+  // limit: 10 requests per minute per IP
+  const rateLimitResult = await checkRateLimit(ip, "github-oauth-init", 10, 60 * 1000);
+
+  if (!rateLimitResult.allowed) {
+    logger.warn({ ip }, "Rate limit exceeded for GitHub OAuth initialization");
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const installationId = searchParams.get("installation_id");
   const redirectTo = searchParams.get("redirect_to") || "/github-app/success";
