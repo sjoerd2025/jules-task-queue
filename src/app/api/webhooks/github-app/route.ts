@@ -1,5 +1,5 @@
 import { env } from "@/lib/env";
-import { createJulesLabelsForRepository } from "@/lib/github-labels";
+import { createJulesLabelsForRepositories } from "@/lib/github-labels";
 import logger from "@/lib/logger";
 import { processJulesLabelEvent } from "@/lib/webhook-processor";
 import { db } from "@/server/db";
@@ -298,29 +298,39 @@ async function handleInstallationRepositoriesEvent(
           `Creating Jules labels in ${repositories.length} newly added repositories`,
         );
 
-        await Promise.allSettled(
-          repositories.map(async (repo) => {
+        // Batch create label preference repositories
+        const preferenceRepositories = repositories.map(
+          (repo: GitHubWebhookRepository) => {
             const owner =
               repo.owner?.login || repo.full_name.split("/")[0] || "unknown";
 
-            // Save repository to label preferences
-            await prisma.labelPreferenceRepository.create({
-              data: {
-                labelPreferenceId: labelPreference.id,
-                repositoryId: BigInt(repo.id),
-                name: repo.name,
-                fullName: repo.full_name,
-                owner: owner,
-              },
-            });
+            return {
+              labelPreferenceId: labelPreference.id,
+              repositoryId: BigInt(repo.id),
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: owner,
+            };
+          },
+        );
 
-            // Create labels in the repository
-            return createJulesLabelsForRepository(
-              owner,
-              repo.name,
-              installation.id,
-            );
-          }),
+        await prisma.labelPreferenceRepository.createMany({
+          data: preferenceRepositories,
+          skipDuplicates: true,
+        });
+
+        // Batch create labels in the repositories
+        await createJulesLabelsForRepositories(
+          repositories.map((repo: GitHubWebhookRepository) => ({
+            id: repo.id,
+            name: repo.name,
+            full_name: repo.full_name,
+            owner: repo.owner,
+            private: repo.private,
+            html_url: repo.html_url,
+            description: repo.description || undefined,
+          })),
+          installation.id,
         );
       }
 
