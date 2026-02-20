@@ -83,7 +83,6 @@ export function InstallationStatusHandler(): React.JSX.Element {
         if (!response.ok) {
           // Handle API errors gracefully
           if (response.status === 401 && data.error === "oauth_required") {
-            console.log("OAuth flow required, redirecting user");
 
             // Validate OAuth URL before redirecting
             if (data.oauth_url && isValidOAuthUrl(data.oauth_url)) {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildInstallationUrl, INSTALLATION_ERRORS } from './github-app-utils';
 
 // Mock the env module
@@ -12,16 +13,28 @@ vi.mock('@/lib/env', () => ({
 vi.mock('@/lib/logger', () => ({
   default: {
     error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 import { env } from '@/lib/env';
 
 describe('buildInstallationUrl', () => {
+  const originalURL = global.URL;
+
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset env mock default
     (env as any).NEXT_PUBLIC_GITHUB_APP_NAME = 'test-app-name';
+    global.URL = originalURL;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    global.URL = originalURL;
+    main
   });
 
   it('should return a valid installation URL when inputs are valid', () => {
@@ -70,6 +83,7 @@ describe('buildInstallationUrl', () => {
   });
 
   it('should handle exception during URL construction', () => {
+  add-github-app-utils-tests-1870742624639543789
      const originalURL = global.URL;
      let callCount = 0;
 
@@ -94,5 +108,27 @@ describe('buildInstallationUrl', () => {
         // Restore URL
         global.URL = originalURL;
      }
+     // Mock URL constructor to throw error specifically for the installation URL construction
+     // The first call is checking baseUrl validity, which we want to pass.
+     // The second call is creating the installation URL, which we want to fail.
+
+     let callCount = 0;
+     const mockURL = vi.fn(function(url: string | URL, base?: string | URL) {
+         callCount++;
+         // The implementation calls new URL(baseUrl) first
+         // Then new URL(installationUrlString) second
+         if (callCount === 2) {
+             throw new Error('Test error');
+         }
+         return new originalURL(url, base);
+     });
+
+     global.URL = mockURL as any;
+
+     const result = buildInstallationUrl('https://example.com');
+
+     expect(result.success).toBe(false);
+     expect(result.errorCode).toBe(INSTALLATION_ERRORS.UNKNOWN.code);
+     expect(result.error).toBe('Test error');
   });
 });

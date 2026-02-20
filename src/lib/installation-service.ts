@@ -191,35 +191,37 @@ export class InstallationService {
       });
 
       // Add/update repositories from GitHub
-      for (const repo of githubRepositories) {
-        await db.installationRepository.upsert({
-          where: {
-            installationId_repositoryId: {
+      await Promise.all(
+        githubRepositories.map((repo) =>
+          db.installationRepository.upsert({
+            where: {
+              installationId_repositoryId: {
+                installationId,
+                repositoryId: BigInt(repo.id),
+              },
+            },
+            update: {
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: repo.owner.login,
+              private: repo.private,
+              htmlUrl: repo.html_url,
+              description: repo.description,
+              removedAt: null, // Reset removal
+            },
+            create: {
               installationId,
               repositoryId: BigInt(repo.id),
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: repo.owner.login,
+              private: repo.private,
+              htmlUrl: repo.html_url,
+              description: repo.description,
             },
-          },
-          update: {
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-            removedAt: null, // Reset removal
-          },
-          create: {
-            installationId,
-            repositoryId: BigInt(repo.id),
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-          },
-        });
-      }
+          }),
+        ),
+      );
 
       logger.info(
         `Synced installation ${installationId}: ${githubRepositories.length} repositories`,
@@ -236,31 +238,49 @@ export class InstallationService {
    */
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
-    const results = [];
+    const concurrencyLimit = 5;
+    const results: Array<{
+      installationId: number;
+      success: boolean;
+      data?: unknown;
+      error?: string;
+    }> = new Array(installations.length);
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+    // Worker pool pattern to limit concurrency while processing all items
+    let index = 0;
+    const next = async () => {
+      while (index < installations.length) {
+        const i = index++;
+        const installation = installations[i];
+        if (!installation) break;
+
+        try {
+          const synced = await this.syncInstallation(installation.id);
+          results[i] = {
+            installationId: installation.id,
+            success: true,
+            data: synced,
+          };
+        } catch (error) {
+          logger.error(
+            { error },
+            `Failed to sync installation ${installation.id}`,
+          );
+          results[i] = {
+            installationId: installation.id,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       }
-    }
+    };
+
+    const workers = Array.from({ length: concurrencyLimit }, () => next());
+    await Promise.all(workers);
 
     return results;
   }
+
 
   /**
    * Get installation health status

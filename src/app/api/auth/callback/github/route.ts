@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Check if the decoded state contains our expected redirect path
-        if (decodedState.includes("/github-app/success")) {
+        if (decodedState === "/github-app/success") {
           // This is likely GitHub's automatic OAuth flow during installation
           // We'll accept this state and try to get installation_id from URL params
           stateValidationPassed = true;

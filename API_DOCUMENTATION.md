@@ -243,7 +243,7 @@ curl -X POST "https://your-app.vercel.app/api/trpc/admin.cleanup" \
 
 ```typescript
 {
-  logs: WebhookLog[];
+  logs: WebhookLog[]; // payload is returned as a JSON string
   total: number;
 }
 ```
