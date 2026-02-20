@@ -41,6 +41,11 @@ describe("jules.ts", () => {
       expect(isJulesBot("other-bot")).toBe(false);
       expect(isJulesBot("jules-imposter")).toBe(false);
     });
+
+    it("should not match usernames that contain the bot name as a substring", () => {
+      expect(isJulesBot("xgoogle-labs-julesx")).toBe(false);
+      expect(isJulesBot("not-google-labs-jules-really")).toBe(false);
+    });
   });
 
   describe("isTaskLimitComment", () => {
