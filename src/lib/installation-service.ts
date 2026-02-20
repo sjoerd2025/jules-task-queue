@@ -191,35 +191,37 @@ export class InstallationService {
       });
 
       // Add/update repositories from GitHub
-      for (const repo of githubRepositories) {
-        await db.installationRepository.upsert({
-          where: {
-            installationId_repositoryId: {
+      await Promise.all(
+        githubRepositories.map((repo) =>
+          db.installationRepository.upsert({
+            where: {
+              installationId_repositoryId: {
+                installationId,
+                repositoryId: BigInt(repo.id),
+              },
+            },
+            update: {
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: repo.owner.login,
+              private: repo.private,
+              htmlUrl: repo.html_url,
+              description: repo.description,
+              removedAt: null, // Reset removal
+            },
+            create: {
               installationId,
               repositoryId: BigInt(repo.id),
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: repo.owner.login,
+              private: repo.private,
+              htmlUrl: repo.html_url,
+              description: repo.description,
             },
-          },
-          update: {
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-            removedAt: null, // Reset removal
-          },
-          create: {
-            installationId,
-            repositoryId: BigInt(repo.id),
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-          },
-        });
-      }
+          }),
+        ),
+      );
 
       logger.info(
         `Synced installation ${installationId}: ${githubRepositories.length} repositories`,
