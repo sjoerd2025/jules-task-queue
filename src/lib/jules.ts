@@ -2,6 +2,7 @@ import { githubClient } from "@/lib/github";
 import logger from "@/lib/logger";
 import { getUserAccessToken } from "@/lib/token-manager";
 import { db } from "@/server/db";
+import { JulesTask } from "@prisma/client";
 import { toSafeNumber } from "@/lib/number";
 import type {
   CommentAnalysis,
@@ -592,11 +593,21 @@ export async function processWorkflowDecision(
 /**
  * Process retry for a flagged task (enhanced with stored repo info)
  */
-export async function processTaskRetry(taskId: number): Promise<boolean> {
+export async function processTaskRetry(
+  taskOrId: number | JulesTask,
+): Promise<boolean> {
+  const taskId = typeof taskOrId === "number" ? taskOrId : taskOrId.id;
+
   try {
-    const task = await db.julesTask.findUnique({
-      where: { id: taskId },
-    });
+    let task: JulesTask | null;
+
+    if (typeof taskOrId === "number") {
+      task = await db.julesTask.findUnique({
+        where: { id: taskId },
+      });
+    } else {
+      task = taskOrId;
+    }
 
     if (!task || !task.flaggedForRetry) {
       logger.info(`Task ${taskId} not found or not flagged for retry`);
@@ -712,7 +723,7 @@ export async function retryAllFlaggedTasks(
       const task = queue.shift();
       if (!task) break;
       try {
-        const success = await processTaskRetry(task.id);
+        const success = await processTaskRetry(task);
         if (success) {
           stats.successful++;
         } else {
