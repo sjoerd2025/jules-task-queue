@@ -351,6 +351,201 @@ async function handleInstallationRepositoriesEvent(
 
 /**
  * Process GitHub App webhook events
+
+/**
+ * Process installation event
+ */
+async function processInstallationWebhook(
+  eventType: string,
+  webhookEvent: GitHubWebhookEvent,
+  payload: unknown,
+  startTime: number,
+): Promise<NextResponse> {
+  const installationEvent = webhookEvent as unknown as GitHubInstallationEvent;
+  await handleInstallationEvent(installationEvent, installationEvent.action);
+  await logWebhookEvent(eventType, payload, true);
+
+  return NextResponse.json({
+    message: "Installation event processed successfully",
+    eventType,
+    action: installationEvent.action,
+    installation: installationEvent.installation.id,
+    processingTime: Date.now() - startTime,
+  });
+}
+
+/**
+ * Process installation repositories event
+ */
+async function processInstallationRepositoriesWebhook(
+  eventType: string,
+  webhookEvent: GitHubWebhookEvent,
+  payload: unknown,
+  startTime: number,
+): Promise<NextResponse> {
+  const repositoriesEvent =
+    webhookEvent as unknown as GitHubInstallationRepositoriesEvent;
+  await handleInstallationRepositoriesEvent(
+    repositoriesEvent,
+    repositoriesEvent.action,
+  );
+  await logWebhookEvent(eventType, payload, true);
+
+  return NextResponse.json({
+    message: "Installation repositories event processed successfully",
+    eventType,
+    action: repositoriesEvent.action,
+    installation: repositoriesEvent.installation.id,
+    processingTime: Date.now() - startTime,
+  });
+}
+
+/**
+ * Process issue comment event
+ */
+async function processIssueCommentWebhook(
+  eventType: string,
+  webhookEvent: GitHubWebhookEvent,
+  payload: unknown,
+  startTime: number,
+): Promise<NextResponse> {
+  // Only process comment creation for now
+  if (webhookEvent.action !== "created") {
+    await logWebhookEvent(
+      eventType,
+      payload,
+      true,
+      `Action '${webhookEvent.action}' ignored`,
+    );
+    return NextResponse.json({
+      message: "Comment action not processed",
+      action: webhookEvent.action,
+      processingTime: Date.now() - startTime,
+    });
+  }
+
+  const commentEvent = webhookEvent as unknown as GitHubIssueCommentEvent;
+
+  // Check if the issue has 'jules' label
+  const hasJulesLabel = commentEvent.issue.labels.some(
+    (label: GitHubLabel) => label.name.toLowerCase() === "jules",
+  );
+
+  if (!hasJulesLabel) {
+    await logWebhookEvent(
+      eventType,
+      payload,
+      true,
+      "Issue does not have 'jules' label",
+    );
+    return NextResponse.json({
+      message: "Issue comment ignored - no 'jules' label",
+      processingTime: Date.now() - startTime,
+    });
+  }
+
+  // Log comment for monitoring Jules interactions
+  logger.info(
+    `New comment on Jules-labeled issue ${commentEvent.repository.full_name}#${commentEvent.issue.number} by ${commentEvent.comment.user.login}`,
+  );
+
+  await logWebhookEvent(eventType, payload, true);
+
+  return NextResponse.json({
+    message: "Issue comment logged successfully",
+    eventType,
+    action: commentEvent.action,
+    repository: commentEvent.repository.full_name,
+    issue: commentEvent.issue.number,
+    commenter: commentEvent.comment.user.login,
+    installation: commentEvent.installation?.id,
+    processingTime: Date.now() - startTime,
+  });
+}
+
+/**
+ * Process issues event
+ */
+async function processIssuesWebhook(
+  eventType: string,
+  webhookEvent: GitHubWebhookEvent,
+  payload: unknown,
+  startTime: number,
+): Promise<NextResponse> {
+  // Only process issue label events
+  if (
+    webhookEvent.action !== "labeled" &&
+    webhookEvent.action !== "unlabeled"
+  ) {
+    await logWebhookEvent(
+      eventType,
+      payload,
+      true,
+      `Action '${webhookEvent.action}' ignored`,
+    );
+    return NextResponse.json({
+      message: "Action not processed",
+      action: webhookEvent.action,
+      processingTime: Date.now() - startTime,
+    });
+  }
+
+  // Parse as label event
+  const labelEvent = GitHubLabelEventSchema.parse(payload);
+
+  // Only process 'jules' and 'jules-queue' label events
+  const labelName = labelEvent.label.name.toLowerCase();
+  if (!["jules", "jules-queue"].includes(labelName)) {
+    await logWebhookEvent(
+      eventType,
+      payload,
+      true,
+      `Label '${labelName}' ignored`,
+    );
+    return NextResponse.json({
+      message: "Label not processed",
+      label: labelName,
+      processingTime: Date.now() - startTime,
+    });
+  }
+
+  // Only process open issues
+  if (labelEvent.issue.state !== "open") {
+    await logWebhookEvent(eventType, payload, true, "Issue not open");
+    return NextResponse.json({
+      message: "Issue not open",
+      state: labelEvent.issue.state,
+      processingTime: Date.now() - startTime,
+    });
+  }
+
+  // Process the Jules label event with installation context
+  logger.info(
+    `Processing ${labelEvent.action} event for label '${labelName}' on ${labelEvent.repository.full_name}#${labelEvent.issue.number} (installation: ${webhookEvent.installation?.id})`,
+  );
+
+  const result = await processJulesLabelEvent(
+    labelEvent,
+    webhookEvent.installation?.id,
+  );
+
+  await logWebhookEvent(eventType, payload, true);
+
+  return NextResponse.json({
+    message: "Webhook processed successfully",
+    eventType,
+    action: labelEvent.action,
+    label: labelName,
+    repository: labelEvent.repository.full_name,
+    issue: labelEvent.issue.number,
+    installation: webhookEvent.installation?.id,
+    result,
+    processingTime: Date.now() - startTime,
+  });
+}
+
+/**
+ * Process GitHub App webhook events
  */
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
@@ -426,172 +621,36 @@ export async function POST(req: NextRequest) {
 
     const webhookEvent = payload as GitHubWebhookEvent;
 
-    // Handle installation events
-    if (eventType === "installation") {
-      const installationEvent =
-        webhookEvent as unknown as GitHubInstallationEvent;
-      await handleInstallationEvent(
-        installationEvent,
-        installationEvent.action,
-      );
-      await logWebhookEvent(eventType, payload, true);
-
-      return NextResponse.json({
-        message: "Installation event processed successfully",
-        eventType,
-        action: installationEvent.action,
-        installation: installationEvent.installation.id,
-        processingTime: Date.now() - startTime,
-      });
-    }
-
-    // Handle installation repository events
-    if (eventType === "installation_repositories") {
-      const repositoriesEvent =
-        webhookEvent as unknown as GitHubInstallationRepositoriesEvent;
-      await handleInstallationRepositoriesEvent(
-        repositoriesEvent,
-        repositoriesEvent.action,
-      );
-      await logWebhookEvent(eventType, payload, true);
-
-      return NextResponse.json({
-        message: "Installation repositories event processed successfully",
-        eventType,
-        action: repositoriesEvent.action,
-        installation: repositoriesEvent.installation.id,
-        processingTime: Date.now() - startTime,
-      });
-    }
-
-    // Handle issue comment events
-    if (eventType === "issue_comment") {
-      // Only process comment creation for now
-      if (webhookEvent.action !== "created") {
-        await logWebhookEvent(
+    // Dispatch to specific event handlers
+    switch (eventType) {
+      case "installation":
+        return await processInstallationWebhook(
           eventType,
+          webhookEvent,
           payload,
-          true,
-          `Action '${webhookEvent.action}' ignored`,
+          startTime,
         );
-        return NextResponse.json({
-          message: "Comment action not processed",
-          action: webhookEvent.action,
-          processingTime: Date.now() - startTime,
-        });
-      }
-
-      const commentEvent = webhookEvent as unknown as GitHubIssueCommentEvent;
-
-      // Check if the issue has 'jules' label
-      const hasJulesLabel = commentEvent.issue.labels.some(
-        (label: GitHubLabel) => label.name.toLowerCase() === "jules",
-      );
-
-      if (!hasJulesLabel) {
-        await logWebhookEvent(
+      case "installation_repositories":
+        return await processInstallationRepositoriesWebhook(
           eventType,
+          webhookEvent,
           payload,
-          true,
-          "Issue does not have 'jules' label",
+          startTime,
         );
-        return NextResponse.json({
-          message: "Issue comment ignored - no 'jules' label",
-          processingTime: Date.now() - startTime,
-        });
-      }
-
-      // Log comment for monitoring Jules interactions
-      logger.info(
-        `New comment on Jules-labeled issue ${commentEvent.repository.full_name}#${commentEvent.issue.number} by ${commentEvent.comment.user.login}`,
-      );
-
-      await logWebhookEvent(eventType, payload, true);
-
-      return NextResponse.json({
-        message: "Issue comment logged successfully",
-        eventType,
-        action: commentEvent.action,
-        repository: commentEvent.repository.full_name,
-        issue: commentEvent.issue.number,
-        commenter: commentEvent.comment.user.login,
-        installation: commentEvent.installation?.id,
-        processingTime: Date.now() - startTime,
-      });
-    }
-
-    // Handle issue events (same as before, but with installation context)
-    if (eventType === "issues") {
-      // Only process issue label events
-      if (
-        webhookEvent.action !== "labeled" &&
-        webhookEvent.action !== "unlabeled"
-      ) {
-        await logWebhookEvent(
+      case "issue_comment":
+        return await processIssueCommentWebhook(
           eventType,
+          webhookEvent,
           payload,
-          true,
-          `Action '${webhookEvent.action}' ignored`,
+          startTime,
         );
-        return NextResponse.json({
-          message: "Action not processed",
-          action: webhookEvent.action,
-          processingTime: Date.now() - startTime,
-        });
-      }
-
-      // Parse as label event
-      const labelEvent = GitHubLabelEventSchema.parse(payload);
-
-      // Only process 'jules' and 'jules-queue' label events
-      const labelName = labelEvent.label.name.toLowerCase();
-      if (!["jules", "jules-queue"].includes(labelName)) {
-        await logWebhookEvent(
+      case "issues":
+        return await processIssuesWebhook(
           eventType,
+          webhookEvent,
           payload,
-          true,
-          `Label '${labelName}' ignored`,
+          startTime,
         );
-        return NextResponse.json({
-          message: "Label not processed",
-          label: labelName,
-          processingTime: Date.now() - startTime,
-        });
-      }
-
-      // Only process open issues
-      if (labelEvent.issue.state !== "open") {
-        await logWebhookEvent(eventType, payload, true, "Issue not open");
-        return NextResponse.json({
-          message: "Issue not open",
-          state: labelEvent.issue.state,
-          processingTime: Date.now() - startTime,
-        });
-      }
-
-      // Process the Jules label event with installation context
-      logger.info(
-        `Processing ${labelEvent.action} event for label '${labelName}' on ${labelEvent.repository.full_name}#${labelEvent.issue.number} (installation: ${webhookEvent.installation?.id})`,
-      );
-
-      const result = await processJulesLabelEvent(
-        labelEvent,
-        webhookEvent.installation?.id,
-      );
-
-      await logWebhookEvent(eventType, payload, true);
-
-      return NextResponse.json({
-        message: "Webhook processed successfully",
-        eventType,
-        action: labelEvent.action,
-        label: labelName,
-        repository: labelEvent.repository.full_name,
-        issue: labelEvent.issue.number,
-        installation: webhookEvent.installation?.id,
-        result,
-        processingTime: Date.now() - startTime,
-      });
     }
 
     // Ignore other event types
@@ -634,10 +693,6 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-/**
- * Health check endpoint for GitHub App webhooks
- */
 export async function GET() {
   try {
     // Test database connectivity
