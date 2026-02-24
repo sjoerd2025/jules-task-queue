@@ -190,35 +190,43 @@ export class InstallationService {
         data: { removedAt: new Date() },
       });
 
-      // Add/update repositories from GitHub
-      for (const repo of githubRepositories) {
-        await db.installationRepository.upsert({
-          where: {
-            installationId_repositoryId: {
-              installationId,
-              repositoryId: BigInt(repo.id),
-            },
-          },
-          update: {
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-            removedAt: null, // Reset removal
-          },
-          create: {
-            installationId,
-            repositoryId: BigInt(repo.id),
-            name: repo.name,
-            fullName: repo.full_name,
-            owner: repo.owner.login,
-            private: repo.private,
-            htmlUrl: repo.html_url,
-            description: repo.description,
-          },
-        });
+      // Add/update repositories from GitHub in batches
+      // Use batch processing with Promise.all to handle N+1 upserts efficiently
+      // Batch size of 50 keeps memory usage low and prevents connection pool exhaustion
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < githubRepositories.length; i += BATCH_SIZE) {
+        const batch = githubRepositories.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map((repo) =>
+            db.installationRepository.upsert({
+              where: {
+                installationId_repositoryId: {
+                  installationId,
+                  repositoryId: BigInt(repo.id),
+                },
+              },
+              update: {
+                name: repo.name,
+                fullName: repo.full_name,
+                owner: repo.owner.login,
+                private: repo.private,
+                htmlUrl: repo.html_url,
+                description: repo.description,
+                removedAt: null, // Reset removal
+              },
+              create: {
+                installationId,
+                repositoryId: BigInt(repo.id),
+                name: repo.name,
+                fullName: repo.full_name,
+                owner: repo.owner.login,
+                private: repo.private,
+                htmlUrl: repo.html_url,
+                description: repo.description,
+              },
+            }),
+          ),
+        );
       }
 
       logger.info(
@@ -358,9 +366,11 @@ export class InstallationService {
     });
 
     // Delete associated repositories first (due to foreign key constraints)
-    for (const installation of suspendedInstallations) {
+    // Optimized: Use a single query to delete repositories for all suspended installations
+    if (suspendedInstallations.length > 0) {
+      const installationIds = suspendedInstallations.map((i) => i.id);
       await db.installationRepository.deleteMany({
-        where: { installationId: installation.id },
+        where: { installationId: { in: installationIds } },
       });
     }
 
