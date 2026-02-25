@@ -75,7 +75,7 @@ async function logWebhookEvent(
     });
   } catch (logError) {
     // Log to console if database logging fails
-    logger.error("Failed to log webhook event:", logError);
+    logger.error({ err: logError }, "Failed to log webhook event:");
   }
 }
 
@@ -615,11 +615,14 @@ export async function POST(req: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
 
-    logger.error("GitHub App webhook processing error:", {
-      eventType,
-      error: errorMessage,
-      payload: payload ? JSON.stringify(payload).slice(0, 500) : null,
-    });
+    logger.error(
+      {
+        eventType,
+        error: errorMessage,
+        payload: payload ? JSON.stringify(payload).slice(0, 500) : null,
+      },
+      "GitHub App webhook processing error:",
+    );
 
     await logWebhookEvent(eventType, payload, false, errorMessage);
 
