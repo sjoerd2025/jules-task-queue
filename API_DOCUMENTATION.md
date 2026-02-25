@@ -1,8 +1,10 @@
-# Jules Task Queue - API Documentation
+# API Documentation
+
+The Jules task queue system exposes a tRPC API for task management, monitoring, and administrative operations.
 
 ## Overview
 
-The Jules Task Queue system provides a comprehensive tRPC-based API for managing GitHub issue tasks, monitoring system health, and administering the queue system. The API is organized into three main routers located in `src/server/api/routers/`:
+The API is built using [tRPC](https://trpc.io/) and is located in `src/server/api/routers/`:
 
 - **Tasks Router** (`tasks.ts`) - Core task management operations
 - **Admin Router** (`admin.ts`) - Administrative and monitoring functions
@@ -17,7 +19,15 @@ When self-hosted: `http://localhost:3000/api/trpc` (or your configured domain)
 
 This API leverages GitHub App authentication, including user access tokens obtained via OAuth during installation. This ensures that actions performed by the system (e.g., label changes) are attributed to the user who authorized the app, allowing Jules to respond correctly.
 
-For development, endpoints are open. In production, implement authentication middleware in the tRPC context (`src/server/api/trpc.ts`) to secure your API.
+For development, endpoints are open. In production, sensitive endpoints (such as `tasks.list`, `tasks.retry`, `tasks.update` and all `admin.*`) require authentication middleware in the tRPC context (`src/server/api/trpc.ts`) to secure your API.
+
+**Admin Authentication**:
+Endpoints marked as administrative or sensitive require the `x-admin-secret` header in production. The value must match the `ADMIN_SECRET` environment variable.
+
+Example header:
+```bash
+-H "x-admin-secret: your_secret_here"
+```
 
 ---
 
@@ -25,7 +35,7 @@ For development, endpoints are open. In production, implement authentication mid
 
 **Purpose**: Manage individual Jules tasks, view statistics, and perform task operations.
 
-### `tasks.list`
+### `tasks.list` (Protected)
 
 **Purpose**: Retrieve a paginated list of all Jules tasks with filtering options.
 
@@ -52,10 +62,10 @@ For development, endpoints are open. In production, implement authentication mid
 
 ```bash
 # Get first 20 tasks
-curl "https://your-app.vercel.app/api/trpc/tasks.list?input={\"limit\":20}"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/tasks.list?input={\"limit\":20}"
 
 # Get only flagged tasks
-curl "https://your-app.vercel.app/api/trpc/tasks.list?input={\"flaggedOnly\":true}"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/tasks.list?input={\"flaggedOnly\":true}"
 ```
 
 ### `tasks.getById`
@@ -107,7 +117,7 @@ curl "https://your-app.vercel.app/api/trpc/tasks.getById?input={\"id\":123}"
 curl "https://your-app.vercel.app/api/trpc/tasks.stats"
 ```
 
-### `tasks.retry`
+### `tasks.retry` (Protected)
 
 **Purpose**: Manually retry a specific flagged task.
 
@@ -133,10 +143,11 @@ curl "https://your-app.vercel.app/api/trpc/tasks.stats"
 ```bash
 curl -X POST "https://your-app.vercel.app/api/trpc/tasks.retry" \
   -H "Content-Type: application/json" \
+  -H "x-admin-secret: secret" \
   -d '{"id": 123}'
 ```
 
-### `tasks.updateStatus`
+### `tasks.updateStatus` (Protected)
 
 **Purpose**: Manually update a task's retry status.
 
@@ -163,6 +174,7 @@ curl -X POST "https://your-app.vercel.app/api/trpc/tasks.retry" \
 ```bash
 curl -X POST "https://your-app.vercel.app/api/trpc/tasks.updateStatus" \
   -H "Content-Type: application/json" \
+  -H "x-admin-secret: secret" \
   -d '{"id": 123, "flaggedForRetry": false}'
 ```
 
@@ -170,7 +182,7 @@ curl -X POST "https://your-app.vercel.app/api/trpc/tasks.updateStatus" \
 
 ## Admin Router (`admin.ts`)
 
-**Purpose**: Administrative operations, bulk actions, and system monitoring.
+**Purpose**: Administrative operations, bulk actions, and system monitoring. All endpoints require authentication.
 
 ### `admin.retryAll`
 
@@ -192,7 +204,8 @@ curl -X POST "https://your-app.vercel.app/api/trpc/tasks.updateStatus" \
 **Example Usage**:
 
 ```bash
-curl -X POST "https://your-app.vercel.app/api/trpc/admin.retryAll"
+curl -X POST "https://your-app.vercel.app/api/trpc/admin.retryAll" \
+  -H "x-admin-secret: secret"
 ```
 
 ### `admin.cleanup`
@@ -222,6 +235,7 @@ curl -X POST "https://your-app.vercel.app/api/trpc/admin.retryAll"
 # Clean up tasks older than 7 days
 curl -X POST "https://your-app.vercel.app/api/trpc/admin.cleanup" \
   -H "Content-Type: application/json" \
+  -H "x-admin-secret: secret" \
   -d '{"olderThanDays": 7}'
 ```
 
@@ -252,10 +266,10 @@ curl -X POST "https://your-app.vercel.app/api/trpc/admin.cleanup" \
 
 ```bash
 # Get recent failed operations
-curl "https://your-app.vercel.app/api/trpc/admin.logs?input={\"success\":false,\"limit\":10}"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.logs?input={\"success\":false,\"limit\":10}"
 
 # Get cron job executions
-curl "https://your-app.vercel.app/api/trpc/admin.logs?input={\"eventType\":\"cron_retry_execution\"}"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.logs?input={\"eventType\":\"cron_retry_execution\"}"
 ```
 
 ### `admin.health`
@@ -286,7 +300,7 @@ curl "https://your-app.vercel.app/api/trpc/admin.logs?input={\"eventType\":\"cro
 **Example Usage**:
 
 ```bash
-curl "https://your-app.vercel.app/api/trpc/admin.health"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.health"
 ```
 
 ### `admin.installations.list`
@@ -392,18 +406,19 @@ curl "https://your-app.vercel.app/api/trpc/admin.health"
 
 ```bash
 # List all installations
-curl "https://your-app.vercel.app/api/trpc/admin.installations.list"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.installations.list"
 
 # Get installation details
-curl "https://your-app.vercel.app/api/trpc/admin.installations.detail?input={\"installationId\":123}"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.installations.detail?input={\"installationId\":123}"
 
 # Sync specific installation
 curl -X POST "https://your-app.vercel.app/api/trpc/admin.installations.sync" \
   -H "Content-Type: application/json" \
+  -H "x-admin-secret: secret" \
   -d '{"installationId": 123}'
 
 # Get installation statistics
-curl "https://your-app.vercel.app/api/trpc/admin.installations.stats"
+curl -H "x-admin-secret: secret" "https://your-app.vercel.app/api/trpc/admin.installations.stats"
 ```
 
 ---
@@ -451,15 +466,16 @@ Create a simple monitoring script:
 // monitor.js
 async function getSystemStatus() {
   const baseUrl = "https://your-app.vercel.app/api/trpc";
+  const headers = { "x-admin-secret": "your_secret" };
 
   // Get overall health
-  const health = await fetch(`${baseUrl}/admin.health`).then((r) => r.json());
+  const health = await fetch(`${baseUrl}/admin.health`, { headers }).then((r) => r.json());
 
-  // Get task statistics
+  // Get task statistics (public)
   const stats = await fetch(`${baseUrl}/tasks.stats`).then((r) => r.json());
 
   // Get recent logs
-  const logs = await fetch(`${baseUrl}/admin.logs?input={"limit":5}`).then(
+  const logs = await fetch(`${baseUrl}/admin.logs?input={"limit":5}`, { headers }).then(
     (r) => r.json(),
   );
 
@@ -480,7 +496,10 @@ async function retryAllTasks() {
     "https://your-app.vercel.app/api/trpc/admin.retryAll",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-secret": "your_secret"
+      },
     },
   );
 
@@ -496,12 +515,17 @@ retryAllTasks();
 ```javascript
 // task-manager.js
 async function manageTask(taskId, shouldRetry) {
+  const headers = {
+    "Content-Type": "application/json",
+    "x-admin-secret": "your_secret"
+  };
+
   // Update task status
   const updateResponse = await fetch(
     "https://your-app.vercel.app/api/trpc/tasks.updateStatus",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ id: taskId, flaggedForRetry: shouldRetry }),
     },
   );
@@ -512,7 +536,7 @@ async function manageTask(taskId, shouldRetry) {
       "https://your-app.vercel.app/api/trpc/tasks.retry",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ id: taskId }),
       },
     );
@@ -532,7 +556,7 @@ All endpoints return standardized error responses:
 ```typescript
 {
   error: {
-    code: "INTERNAL_SERVER_ERROR" | "BAD_REQUEST" | "NOT_FOUND";
+    code: "INTERNAL_SERVER_ERROR" | "BAD_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED";
     message: string;
     data?: {
       // Additional error context
