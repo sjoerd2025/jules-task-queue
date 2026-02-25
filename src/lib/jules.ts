@@ -3,6 +3,7 @@ import logger from "@/lib/logger";
 import { getUserAccessToken } from "@/lib/token-manager";
 import { db } from "@/server/db";
 import { toSafeNumber } from "@/lib/number";
+import type { JulesTask } from "@prisma/client";
 import type {
   CommentAnalysis,
   CommentClassification,
@@ -592,11 +593,20 @@ export async function processWorkflowDecision(
 /**
  * Process retry for a flagged task (enhanced with stored repo info)
  */
-export async function processTaskRetry(taskId: number): Promise<boolean> {
+export async function processTaskRetry(taskOrId: number | JulesTask): Promise<boolean> {
   try {
-    const task = await db.julesTask.findUnique({
-      where: { id: taskId },
-    });
+    let task: JulesTask | null;
+    let taskId: number;
+
+    if (typeof taskOrId === "number") {
+      taskId = taskOrId;
+      task = await db.julesTask.findUnique({
+        where: { id: taskId },
+      });
+    } else {
+      task = taskOrId;
+      taskId = task.id;
+    }
 
     if (!task || !task.flaggedForRetry) {
       logger.info(`Task ${taskId} not found or not flagged for retry`);
@@ -712,7 +722,7 @@ export async function retryAllFlaggedTasks(
       const task = queue.shift();
       if (!task) break;
       try {
-        const success = await processTaskRetry(task.id);
+        const success = await processTaskRetry(task);
         if (success) {
           stats.successful++;
         } else {
