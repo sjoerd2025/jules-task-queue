@@ -446,7 +446,7 @@ class GitHubClient {
 
       return false;
     } catch (error) {
-      logger.error("Failed to check user starred repositories:", error);
+      logger.error({ error }, "Failed to check user starred repositories:");
       throw error;
     }
   }
