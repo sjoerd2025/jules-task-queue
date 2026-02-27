@@ -358,9 +358,12 @@ export class InstallationService {
     });
 
     // Delete associated repositories first (due to foreign key constraints)
-    for (const installation of suspendedInstallations) {
+    // ⚡ Bolt: Replaced O(N) sequential queries with a single O(1) bulk query
+    // to prevent N+1 database roundtrips during cleanup
+    if (suspendedInstallations.length > 0) {
+      const installationIds = suspendedInstallations.map(inst => inst.id);
       await db.installationRepository.deleteMany({
-        where: { installationId: installation.id },
+        where: { installationId: { in: installationIds } },
       });
     }
 
