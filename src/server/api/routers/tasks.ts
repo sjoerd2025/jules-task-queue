@@ -1,10 +1,10 @@
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, publicProcedure, adminProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 export const tasksRouter = createTRPCRouter({
   // List tasks with filtering and pagination
-  list: publicProcedure
+  list: adminProcedure
     .input(
       z.object({
         limit: z.number().min(1).max(100).default(50),
@@ -99,7 +99,7 @@ export const tasksRouter = createTRPCRouter({
   }),
 
   // Manual retry of a specific task
-  retry: publicProcedure
+  retry: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const task = await ctx.db.julesTask.findUnique({
@@ -124,7 +124,7 @@ export const tasksRouter = createTRPCRouter({
     }),
 
   // Update task status
-  update: publicProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.number(),
