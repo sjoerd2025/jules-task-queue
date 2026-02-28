@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: Documentation Unbloat
 description: Reviews and simplifies documentation by reducing verbosity while maintaining clarity and completeness
 on:

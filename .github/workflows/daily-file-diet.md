@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: Daily File Diet
 description: Analyzes source files daily to identify oversized files that exceed healthy size thresholds, creating actionable refactoring issues
 on:

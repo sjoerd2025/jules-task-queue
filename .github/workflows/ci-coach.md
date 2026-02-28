@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: Daily CI optimization coach that analyzes GitHub Actions workflows for efficiency improvements and cost reduction opportunities
 
 on:

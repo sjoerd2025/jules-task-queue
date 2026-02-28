@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: "Contribution Check"
 on:
   schedule: "every 4 hours"

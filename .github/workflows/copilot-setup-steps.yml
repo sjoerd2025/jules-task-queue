@@ -3,13 +3,14 @@ name: "Copilot Setup Steps"
 # This workflow configures the environment for GitHub Copilot Agent with gh-aw MCP server
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
+  # push:
+    # paths:
+      # - .github/workflows/copilot-setup-steps.yml
 
 jobs:
   # The job MUST be called 'copilot-setup-steps' to be recognized by GitHub Copilot Agent
   copilot-setup-steps:
+    if: false
     runs-on: ubuntu-latest
 
     # Set minimal permissions for setup steps

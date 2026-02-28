@@ -29,8 +29,8 @@
 
 name: "Daily Link Checker & Fixer"
 "on":
-  schedule:
-  - cron: "34 10 * * 1-5"
+  # schedule:
+  # - cron: "34 10 * * 1-5"
     # Friendly format: daily on weekdays (scattered)
   workflow_dispatch:
 

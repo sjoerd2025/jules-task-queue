@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   Intelligent assistant that answers questions, analyzes repositories, and can create PRs for workflow optimizations.
   An expert system that improves, optimizes, and fixes agentic workflows by investigating performance, 

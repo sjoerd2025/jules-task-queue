@@ -33,8 +33,8 @@
 
 name: "Daily Team Status"
 "on":
-  schedule:
-  - cron: "24 10 * * *"
+  # schedule:
+  # - cron: "24 10 * * *"
     # Friendly format: daily (scattered)
   workflow_dispatch:
 

@@ -34,15 +34,15 @@
 name: Agentic Maintenance
 
 on:
-  schedule:
-    - cron: "37 */2 * * *"  # Every 2 hours (based on minimum expires: 1 days)
+  # schedule:
+    # - cron: "37 */2 * * *"  # Every 2 hours (based on minimum expires: 1 days)
   workflow_dispatch:
 
 permissions: {}
 
 jobs:
   close-expired-entities:
-    if: ${{ !github.event.repository.fork }}
+    if: false
     runs-on: ubuntu-slim
     permissions:
       discussions: write

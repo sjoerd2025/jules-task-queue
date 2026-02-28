@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: Daily Documentation Updater
 description: Automatically reviews and updates documentation based on recent code changes
 on:

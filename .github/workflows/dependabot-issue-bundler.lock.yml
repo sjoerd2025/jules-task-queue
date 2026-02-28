@@ -29,8 +29,8 @@
 
 name: "Dependabot Issue Bundler"
 "on":
-  schedule:
-  - cron: "25 9 * * 1"
+  # schedule:
+  # - cron: "25 9 * * 1"
     # Friendly format: weekly on monday (scattered)
   workflow_dispatch:
 
