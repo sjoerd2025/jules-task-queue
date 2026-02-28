@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: Find all open Dependabot PRs and create bundle issues for each runtime + manifest file.
 
 on: weekly on monday

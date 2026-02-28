@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: Plan Command
 description: Generates project plans and task breakdowns when invoked with /plan command in issues or PRs
 

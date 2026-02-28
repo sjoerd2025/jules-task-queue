@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   This workflow creates daily repo status reports. It gathers recent repository
   activity (issues, PRs, discussions, releases, code changes) and generates

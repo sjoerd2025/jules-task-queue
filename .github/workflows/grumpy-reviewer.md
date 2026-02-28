@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: Performs critical code review with a focus on edge cases, potential bugs, and code quality issues
 on:
   slash_command:

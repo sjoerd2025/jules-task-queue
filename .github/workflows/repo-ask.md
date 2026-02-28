@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   Interactive question-answering research agent triggered by the 'repo-ask' command.
   Leverages web search, repository inspection, and bash commands to research and answer

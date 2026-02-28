@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   Reviews incoming pull requests to verify they comply with the repository's
   contribution guidelines. Checks CONTRIBUTING.md and similar docs, then either
