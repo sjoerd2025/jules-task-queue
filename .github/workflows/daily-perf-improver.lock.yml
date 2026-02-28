@@ -63,8 +63,8 @@ name: "Daily Perf Improver"
     types:
     - created
     - edited
-  schedule:
-  - cron: "34 20 * * *"
+  # schedule:
+  # - cron: "34 20 * * *"
   workflow_dispatch: null
 
 permissions: {}
