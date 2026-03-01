@@ -402,8 +402,15 @@ class GitHubClient {
       // We'll paginate through them to find the target repository
       let page = 1;
       const perPage = 100; // Maximum per page
+      const MAX_PAGES = 20; // Limit to 20 pages (approx 2000 repos) to prevent infinite loops
 
       while (true) {
+        if (page > MAX_PAGES) {
+          logger.warn(
+            `Stopped checking user stars for ${username} after ${MAX_PAGES} pages. Target: ${targetOwner}/${targetRepo}`
+          );
+          break;
+        }
         const response = await octokit.request(
           "GET /users/{username}/starred",
           {
