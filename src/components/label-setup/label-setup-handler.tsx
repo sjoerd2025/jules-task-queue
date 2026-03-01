@@ -203,7 +203,6 @@ export function LabelSetupHandler(): React.JSX.Element {
       }
 
       const result = await response.json();
-      console.log("Label setup result:", result);
 
       // Redirect to success page with result details
       const params = new URLSearchParams({
