@@ -30,13 +30,16 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get("state");
 
   // Log minimal details. Do NOT log raw state value.
-  logger.info("OAuth callback received", {
-    url: new URL(request.url).origin,
-    statePresent: Boolean(state),
-    codePresent: Boolean(code),
-    installationId: searchParams.get("installation_id") ? "present" : "missing",
-    setupAction: searchParams.get("setup_action"),
-  });
+  logger.info(
+    {
+      url: new URL(request.url).origin,
+      statePresent: Boolean(state),
+      codePresent: Boolean(code),
+      installationId: searchParams.get("installation_id") ? "present" : "missing",
+      setupAction: searchParams.get("setup_action"),
+    },
+    "OAuth callback received",
+  );
 
   // CSRF Protection
   const oauthStateCookie = (await cookies()).get("oauth_state");
@@ -117,9 +120,10 @@ export async function GET(request: NextRequest) {
           // This is likely GitHub's automatic OAuth flow during installation
           // We'll accept this state and try to get installation_id from URL params
           stateValidationPassed = true;
-          logger.info("GitHub-initiated OAuth flow detected, accepting state", {
-            hasCookie: !!oauthStateCookie,
-          });
+          logger.info(
+            { hasCookie: !!oauthStateCookie },
+            "GitHub-initiated OAuth flow detected, accepting state",
+          );
         }
       }
     } catch (error) {
@@ -325,10 +329,13 @@ export async function GET(request: NextRequest) {
     successUrl.searchParams.set("installation_id", installationId.toString());
     successUrl.searchParams.set("setup_action", "install");
 
-    logger.info("Redirecting to success page", {
-      installationId,
-      redirectUrl: successUrl.toString(),
-    });
+    logger.info(
+      {
+        installationId,
+        redirectUrl: successUrl.toString(),
+      },
+      "Redirecting to success page",
+    );
 
     return NextResponse.redirect(successUrl);
   } catch (error) {

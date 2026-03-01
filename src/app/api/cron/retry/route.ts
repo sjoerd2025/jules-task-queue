@@ -18,15 +18,24 @@ import { cleanupOldTasks, retryAllFlaggedTasks } from "@/lib/jules";
 import logger from "@/lib/logger";
 import { db } from "@/server/db";
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 
 /**
  * Verify cron job authorization with cron secret verification
  */
 function verifyCronAuth(req: NextRequest): boolean {
   // Check for Vercel cron secret if available
-  const cronSecret = req.headers.get("authorization");
+  const cronSecret = req.headers.get("authorization") || "";
   if (env.CRON_SECRET) {
-    return cronSecret === `Bearer ${env.CRON_SECRET}`;
+    const expectedSecret = `Bearer ${env.CRON_SECRET}`;
+    const cronSecretBuffer = Buffer.from(cronSecret);
+    const expectedSecretBuffer = Buffer.from(expectedSecret);
+
+    if (cronSecretBuffer.length !== expectedSecretBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(cronSecretBuffer, expectedSecretBuffer);
   }
 
   // In development, allow without auth
