@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { createJulesLabelsForRepositories } from "@/lib/github-labels";
+import { upsertInstallationRepositories } from "@/lib/installation-repository";
 import logger from "@/lib/logger";
 import { processJulesLabelEvent } from "@/lib/webhook-processor";
 import { db } from "@/server/db";
@@ -127,41 +128,10 @@ async function handleInstallationEvent(
 
       // Add all repositories if "all" selection
       if (installation.repository_selection === "all" && payload.repositories) {
-        await Promise.all(
-          payload.repositories.map((repo: GitHubWebhookRepository) => {
-            // Extract owner from full_name since installation webhooks don't include owner object
-            const owner = repo.full_name.split("/")[0] || "unknown";
-
-            return prisma.installationRepository.upsert({
-              where: {
-                installationId_repositoryId: {
-                  installationId: installation.id,
-                  repositoryId: BigInt(repo.id),
-                },
-              },
-              update: {
-                name: repo.name,
-                fullName: repo.full_name,
-                owner: owner,
-                private: repo.private,
-                htmlUrl:
-                  repo.html_url || `https://github.com/${repo.full_name}`,
-                description: repo.description,
-                removedAt: null, // Reset if previously removed
-              },
-              create: {
-                installationId: installation.id,
-                repositoryId: BigInt(repo.id),
-                name: repo.name,
-                fullName: repo.full_name,
-                owner: owner,
-                private: repo.private,
-                htmlUrl:
-                  repo.html_url || `https://github.com/${repo.full_name}`,
-                description: repo.description,
-              },
-            });
-          }),
+        await upsertInstallationRepositories(
+          prisma,
+          installation.id,
+          payload.repositories,
         );
       }
 
@@ -245,40 +215,10 @@ async function handleInstallationRepositoriesEvent(
 
   if (action === "added") {
     await db.$transaction(async (prisma) => {
-      await Promise.all(
-        repositories.map((repo: GitHubWebhookRepository) => {
-          // Extract owner from full_name since installation repository webhooks may not include owner object
-          const owner =
-            repo.owner?.login || repo.full_name.split("/")[0] || "unknown";
-
-          return prisma.installationRepository.upsert({
-            where: {
-              installationId_repositoryId: {
-                installationId: installation.id,
-                repositoryId: BigInt(repo.id),
-              },
-            },
-            update: {
-              name: repo.name,
-              fullName: repo.full_name,
-              owner: owner,
-              private: repo.private,
-              htmlUrl: repo.html_url || `https://github.com/${repo.full_name}`,
-              description: repo.description,
-              removedAt: null, // Reset if previously removed
-            },
-            create: {
-              installationId: installation.id,
-              repositoryId: BigInt(repo.id),
-              name: repo.name,
-              fullName: repo.full_name,
-              owner: owner,
-              private: repo.private,
-              htmlUrl: repo.html_url || `https://github.com/${repo.full_name}`,
-              description: repo.description,
-            },
-          });
-        }),
+      await upsertInstallationRepositories(
+        prisma,
+        installation.id,
+        repositories,
       );
 
       // Note: Label creation for new repositories should be handled based on user preferences
