@@ -40,32 +40,35 @@ export async function checkRateLimit(
         );
     }
 
-    const existingLimit = await db.rateLimit.findUnique({
+    // Use an atomic upsert to increment the counter immediately.
+    // This removes the initial findUnique and halves the database round-trips for the hot path.
+    const updatedLimit = await db.rateLimit.upsert({
       where: {
         identifier_endpoint: {
           identifier,
           endpoint,
         },
       },
+      create: {
+        identifier,
+        endpoint,
+        requests: 1,
+        windowStart: now,
+        expiresAt: new Date(now.getTime() + windowMs),
+      },
+      update: {
+        requests: {
+          increment: 1,
+        },
+      },
     });
 
-    if (!existingLimit || existingLimit.windowStart < windowStart) {
-      // If no record exists or the window has expired, create/reset the record.
-      await db.rateLimit.upsert({
-        where: {
-          identifier_endpoint: {
-            identifier,
-            endpoint,
-          },
-        },
-        create: {
-          identifier,
-          endpoint,
-          requests: 1,
-          windowStart: now,
-          expiresAt: new Date(now.getTime() + windowMs),
-        },
-        update: {
+    // Check if the window had already expired when we incremented
+    if (updatedLimit.windowStart < windowStart) {
+      // The window expired, so reset it and start a new count
+      const resetLimit = await db.rateLimit.update({
+        where: { id: updatedLimit.id },
+        data: {
           requests: 1,
           windowStart: now,
           expiresAt: new Date(now.getTime() + windowMs),
@@ -75,35 +78,23 @@ export async function checkRateLimit(
       return {
         allowed: true,
         remaining: maxRequests - 1,
-        resetTime: new Date(now.getTime() + windowMs),
+        resetTime: resetLimit.expiresAt,
       };
     }
 
-    if (existingLimit.requests >= maxRequests) {
+    if (updatedLimit.requests > maxRequests) {
       // Limit exceeded.
       return {
         allowed: false,
         remaining: 0,
-        resetTime: existingLimit.expiresAt,
+        resetTime: updatedLimit.expiresAt,
       };
     }
-
-    // Increment the request count.
-    const updatedLimit = await db.rateLimit.update({
-      where: {
-        id: existingLimit.id,
-      },
-      data: {
-        requests: {
-          increment: 1,
-        },
-      },
-    });
 
     return {
       allowed: true,
       remaining: maxRequests - updatedLimit.requests,
-      resetTime: existingLimit.expiresAt,
+      resetTime: updatedLimit.expiresAt,
     };
   } catch (error) {
     logger.error({ error, identifier, endpoint }, "Rate limit check failed");
