@@ -1,0 +1,69 @@
+<<<<<<< SEARCH
+import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+export const tasksRouter = createTRPCRouter({
+  // List tasks with filtering and pagination
+  list: publicProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(50),
+        cursor: z.number().optional(), // for pagination
+        flaggedForRetry: z.boolean().optional(),
+        githubRepoId: z.bigint().optional(),
+      }),
+    )
+=======
+import { adminProcedure, createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+export const tasksRouter = createTRPCRouter({
+  // List tasks with filtering and pagination
+  list: adminProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(50),
+        cursor: z.number().optional(), // for pagination
+        flaggedForRetry: z.boolean().optional(),
+        githubRepoId: z.bigint().optional(),
+      }),
+    )
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+  // Manual retry of a specific task
+  retry: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const task = await ctx.db.julesTask.findUnique({
+        where: { id: input.id },
+      });
+=======
+  // Manual retry of a specific task
+  retry: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const task = await ctx.db.julesTask.findUnique({
+        where: { id: input.id },
+      });
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+  // Update task status
+  update: publicProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        flaggedForRetry: z.boolean().optional(),
+      }),
+    )
+=======
+  // Update task status
+  update: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        flaggedForRetry: z.boolean().optional(),
+      }),
+    )
+>>>>>>> REPLACE
