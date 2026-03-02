@@ -1,0 +1,3 @@
+## 2024-03-22 - [Optimized findInstallationForRepo]
+**Learning:** [The GitHub App client's `findInstallationForRepo` method had an N+1 API call issue when searching for repositories. It unnecessarily looped through all installations, hitting the GitHub API for each. Using the local `InstallationRepository` table first significantly optimizes this operation by bypassing the network.]
+**Action:** [When an API client loops through paginated data or related resources to find a specific entry, always check if a local database replica/cache exists (like `InstallationRepository`) to resolve the query synchronously and avoid N+1 remote requests.]
