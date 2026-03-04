@@ -1,0 +1,32 @@
+--- src/lib/github-app.ts
++++ src/lib/github-app.ts
+@@ -2,6 +2,7 @@
+ import { App } from "@octokit/app";
+ import { Octokit } from "@octokit/rest";
+ import logger from "@/lib/logger";
++import { db } from "@/server/db";
+
+ /**
+  * GitHub App client for installation-based authentication
+@@ -139,6 +140,21 @@
+     repo: string,
+   ): Promise<number | null> {
+     try {
++      // ⚡ Bolt Optimization: Check local database first to avoid N+1 API calls
++      const localRepo = await db.installationRepository.findFirst({
++        where: {
++          owner,
++          name: repo,
++          removedAt: null,
++          installation: {
++            suspendedAt: null,
++          },
++        },
++      });
++      if (localRepo) {
++        return localRepo.installationId;
++      }
++
+       const installations = await this.getInstallations();
+
+       for (const installation of installations) {
