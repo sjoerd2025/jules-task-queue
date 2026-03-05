@@ -1,0 +1,3 @@
+## 2024-05-24 - [Optimize GitHub Installation Lookup]
+**Learning:** GitHub App installations can trigger N+1 API calls if repositories are verified through the GitHub API directly for each lookup. By mirroring the installation and repository states in the local database (`InstallationRepository`), we can reduce the number of API calls significantly and greatly improve performance.
+**Action:** When working with external services with strict rate limits or high latency, prefer querying a synchronized local database mirror of the state rather than making direct API calls, reserving API calls for a fallback when the database lookup fails or is known to be stale.
