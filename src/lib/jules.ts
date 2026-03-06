@@ -136,39 +136,28 @@ export async function upsertJulesTask(params: TaskCreationParams) {
     installationId,
   } = params;
 
-  // Try to find existing task
-  const existingTask = await db.julesTask.findUnique({
+  // Use an atomic upsert to avoid unnecessary database round-trips and race conditions
+  return await db.julesTask.upsert({
     where: { githubIssueId },
+    update: {
+      githubRepoId,
+      githubIssueNumber,
+      repoOwner,
+      repoName,
+      installationId,
+      updatedAt: new Date(),
+    },
+    create: {
+      githubRepoId,
+      githubIssueId,
+      githubIssueNumber,
+      repoOwner,
+      repoName,
+      installationId,
+      flaggedForRetry: false,
+      retryCount: 0,
+    },
   });
-
-  if (existingTask) {
-    // Update existing task
-    return await db.julesTask.update({
-      where: { githubIssueId },
-      data: {
-        githubRepoId,
-        githubIssueNumber,
-        repoOwner,
-        repoName,
-        installationId,
-        updatedAt: new Date(),
-      },
-    });
-  } else {
-    // Create new task
-    return await db.julesTask.create({
-      data: {
-        githubRepoId,
-        githubIssueId,
-        githubIssueNumber,
-        repoOwner,
-        repoName,
-        installationId,
-        flaggedForRetry: false,
-        retryCount: 0,
-      },
-    });
-  }
 }
 
 /**
