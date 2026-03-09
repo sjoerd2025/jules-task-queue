@@ -136,39 +136,28 @@ export async function upsertJulesTask(params: TaskCreationParams) {
     installationId,
   } = params;
 
-  // Try to find existing task
-  const existingTask = await db.julesTask.findUnique({
+  // Use atomic upsert to avoid TOCTOU race condition and reduce DB roundtrips
+  return await db.julesTask.upsert({
     where: { githubIssueId },
+    update: {
+      githubRepoId,
+      githubIssueNumber,
+      repoOwner,
+      repoName,
+      installationId,
+      updatedAt: new Date(),
+    },
+    create: {
+      githubRepoId,
+      githubIssueId,
+      githubIssueNumber,
+      repoOwner,
+      repoName,
+      installationId,
+      flaggedForRetry: false,
+      retryCount: 0,
+    },
   });
-
-  if (existingTask) {
-    // Update existing task
-    return await db.julesTask.update({
-      where: { githubIssueId },
-      data: {
-        githubRepoId,
-        githubIssueNumber,
-        repoOwner,
-        repoName,
-        installationId,
-        updatedAt: new Date(),
-      },
-    });
-  } else {
-    // Create new task
-    return await db.julesTask.create({
-      data: {
-        githubRepoId,
-        githubIssueId,
-        githubIssueNumber,
-        repoOwner,
-        repoName,
-        installationId,
-        flaggedForRetry: false,
-        retryCount: 0,
-      },
-    });
-  }
 }
 
 /**
@@ -676,7 +665,12 @@ export async function processTaskRetry(taskOrId: number | JulesTask): Promise<bo
     );
     return true;
   } catch (error) {
-    logger.error({ error }, `Failed to process retry for task ${taskId}:`);
+    logger.error(
+      { error },
+      `Failed to process retry for task ${
+        typeof taskOrId === "number" ? taskOrId : taskOrId.id
+      }:`,
+    );
     return false;
   }
 }

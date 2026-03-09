@@ -286,36 +286,25 @@ export async function GET(request: NextRequest) {
 
     // Verify installation exists and belongs to the user (or is valid for update)
     // If it doesn't exist, create it (this handles the case where OAuth happens before webhook)
-    let existingInstallation = await db.gitHubInstallation.findUnique({
+    // We use a single atomic upsert rather than findUnique followed by create/update to optimize performance
+    // and prevent TOCTOU race conditions.
+    await db.gitHubInstallation.upsert({
       where: { id: installationId },
-    });
-
-    if (!existingInstallation) {
-      logger.info(
-        { installationId },
-        "Installation not found in database, creating it from OAuth callback",
-      );
-
-      // Create a minimal installation record - the webhook will update it with full details later
-      existingInstallation = await db.gitHubInstallation.upsert({
-        where: { id: installationId },
-        create: {
-          id: installationId,
-          accountId: 0, // Will be updated by webhook
-          accountLogin: "unknown", // Will be updated by webhook
-          accountType: "User", // Will be updated by webhook
-          targetType: "User", // Will be updated by webhook
-          permissions: "{}", // Will be updated by webhook
-          events: "[]", // Will be updated by webhook
-          repositorySelection: "all", // Will be updated by webhook
-        },
-        update: {}, // No update needed if it already exists
-      });
-    }
-
-    await db.gitHubInstallation.update({
-      where: { id: installationId },
-      data: {
+      create: {
+        id: installationId,
+        accountId: 0, // Will be updated by webhook
+        accountLogin: "unknown", // Will be updated by webhook
+        accountType: "User", // Will be updated by webhook
+        targetType: "User", // Will be updated by webhook
+        permissions: "{}", // Will be updated by webhook
+        events: "[]", // Will be updated by webhook
+        repositorySelection: "all", // Will be updated by webhook
+        userAccessToken: encrypt(access_token),
+        refreshToken: encrypt(refresh_token),
+        tokenExpiresAt: tokenExpiresAt,
+        refreshTokenExpiresAt: refreshTokenExpiresAt,
+      },
+      update: {
         userAccessToken: encrypt(access_token),
         refreshToken: encrypt(refresh_token),
         tokenExpiresAt: tokenExpiresAt,
