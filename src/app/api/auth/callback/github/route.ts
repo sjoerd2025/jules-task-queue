@@ -286,38 +286,32 @@ export async function GET(request: NextRequest) {
 
     // Verify installation exists and belongs to the user (or is valid for update)
     // If it doesn't exist, create it (this handles the case where OAuth happens before webhook)
-    let existingInstallation = await db.gitHubInstallation.findUnique({
+    // Optimized: Use atomic upsert to avoid read-modify-write pattern and TOCTOU races
+    // This updates tokens if the installation exists, or creates a minimal record with tokens
+
+    // Pre-calculate encrypted tokens to avoid redundant crypto operations
+    const encryptedAccessToken = encrypt(access_token);
+    const encryptedRefreshToken = encrypt(refresh_token);
+
+    await db.gitHubInstallation.upsert({
       where: { id: installationId },
-    });
-
-    if (!existingInstallation) {
-      logger.info(
-        { installationId },
-        "Installation not found in database, creating it from OAuth callback",
-      );
-
-      // Create a minimal installation record - the webhook will update it with full details later
-      existingInstallation = await db.gitHubInstallation.upsert({
-        where: { id: installationId },
-        create: {
-          id: installationId,
-          accountId: 0, // Will be updated by webhook
-          accountLogin: "unknown", // Will be updated by webhook
-          accountType: "User", // Will be updated by webhook
-          targetType: "User", // Will be updated by webhook
-          permissions: "{}", // Will be updated by webhook
-          events: "[]", // Will be updated by webhook
-          repositorySelection: "all", // Will be updated by webhook
-        },
-        update: {}, // No update needed if it already exists
-      });
-    }
-
-    await db.gitHubInstallation.update({
-      where: { id: installationId },
-      data: {
-        userAccessToken: encrypt(access_token),
-        refreshToken: encrypt(refresh_token),
+      create: {
+        id: installationId,
+        accountId: 0, // Will be updated by webhook
+        accountLogin: "unknown", // Will be updated by webhook
+        accountType: "User", // Will be updated by webhook
+        targetType: "User", // Will be updated by webhook
+        permissions: "{}", // Will be updated by webhook
+        events: "[]", // Will be updated by webhook
+        repositorySelection: "all", // Will be updated by webhook
+        userAccessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        tokenExpiresAt: tokenExpiresAt,
+        refreshTokenExpiresAt: refreshTokenExpiresAt,
+      },
+      update: {
+        userAccessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
         tokenExpiresAt: tokenExpiresAt,
         refreshTokenExpiresAt: refreshTokenExpiresAt,
       },
