@@ -246,25 +246,34 @@ export class InstallationService {
     const installations = await this.getActiveInstallations();
     const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Process in bounded chunks to significantly reduce total synchronization time
+    // without triggering GitHub API rate limits via unbounded concurrency
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < installations.length; i += CHUNK_SIZE) {
+      const chunk = installations.slice(i, i + CHUNK_SIZE);
+      const chunkResults = await Promise.all(
+        chunk.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(installation.id);
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        })
+      );
+      results.push(...chunkResults);
     }
 
     return results;
