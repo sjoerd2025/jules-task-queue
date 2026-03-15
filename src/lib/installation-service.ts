@@ -245,26 +245,33 @@ export class InstallationService {
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
     const results = [];
+    const CONCURRENCY_LIMIT = 10;
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    for (let i = 0; i < installations.length; i += CONCURRENCY_LIMIT) {
+      const batch = installations.slice(i, i + CONCURRENCY_LIMIT);
+      const batchResults = await Promise.all(
+        batch.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(installation.id);
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        }),
+      );
+      results.push(...batchResults);
     }
 
     return results;
