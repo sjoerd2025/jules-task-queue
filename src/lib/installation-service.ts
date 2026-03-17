@@ -246,25 +246,35 @@ export class InstallationService {
     const installations = await this.getActiveInstallations();
     const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Use bounded concurrent execution to significantly reduce total synchronization time
+    // without triggering GitHub API rate limits. Batch size of 10 keeps the memory footprint
+    // and concurrency reasonable while improving performance over sequential processing.
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < installations.length; i += BATCH_SIZE) {
+      const batch = installations.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(installation.id);
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        }),
+      );
+      results.push(...batchResults);
     }
 
     return results;
