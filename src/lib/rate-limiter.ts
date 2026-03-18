@@ -40,46 +40,52 @@ export async function checkRateLimit(
         );
     }
 
-    const updatedLimit = await db.rateLimit.upsert({
-      where: {
-        identifier_endpoint: {
-          identifier,
-          endpoint,
-        },
-      },
-      create: {
-        identifier,
-        endpoint,
-        requests: 1,
-        windowStart: now,
-        expiresAt: new Date(now.getTime() + windowMs),
-      },
-      update: {
-        requests: {
-          increment: 1,
-        },
-      },
-    });
+    // ⚡ Bolt: Replaced Prisma upsert+update with a single atomic raw SQL query.
+    // This prevents Time-of-Check to Time-of-Use (TOCTOU) race conditions and reduces
+    // database round trips from 2 to 1, improving throughput under high concurrent load.
+    const expiresAt = new Date(now.getTime() + windowMs);
+    const result = await db.$queryRaw<
+      Array<{ requests: number; expiresAt: Date; windowStart: Date }>
+    >`
+      INSERT INTO "RateLimit" (
+        "identifier",
+        "endpoint",
+        "requests",
+        "windowStart",
+        "expiresAt",
+        "updatedAt",
+        "createdAt"
+      )
+      VALUES (
+        ${identifier},
+        ${endpoint},
+        1,
+        ${now},
+        ${expiresAt},
+        ${now},
+        ${now}
+      )
+      ON CONFLICT ("identifier", "endpoint") DO UPDATE SET
+        "requests" = CASE
+                       WHEN "RateLimit"."windowStart" < ${windowStart} THEN 1
+                       ELSE "RateLimit"."requests" + 1
+                     END,
+        "windowStart" = CASE
+                          WHEN "RateLimit"."windowStart" < ${windowStart} THEN ${now}
+                          ELSE "RateLimit"."windowStart"
+                        END,
+        "expiresAt" = CASE
+                        WHEN "RateLimit"."windowStart" < ${windowStart} THEN ${expiresAt}
+                        ELSE "RateLimit"."expiresAt"
+                      END,
+        "updatedAt" = ${now}
+      RETURNING "requests", "expiresAt", "windowStart";
+    `;
 
-    if (updatedLimit.windowStart < windowStart) {
-      // If the window has expired, reset the record.
-      await db.rateLimit.update({
-        where: {
-          id: updatedLimit.id,
-        },
-        data: {
-          requests: 1,
-          windowStart: now,
-          expiresAt: new Date(now.getTime() + windowMs),
-        },
-      });
+    const updatedLimit = result[0]!;
 
-      return {
-        allowed: true,
-        remaining: maxRequests - 1,
-        resetTime: new Date(now.getTime() + windowMs),
-      };
-    }
+    // If this was a reset (windowStart updated to 'now'), the requests count is 1
+    // and we already have the right reset time.
 
     if (updatedLimit.requests > maxRequests) {
       // Limit exceeded.
