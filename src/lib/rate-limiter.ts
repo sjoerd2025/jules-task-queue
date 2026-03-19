@@ -40,46 +40,32 @@ export async function checkRateLimit(
         );
     }
 
-    const updatedLimit = await db.rateLimit.upsert({
-      where: {
-        identifier_endpoint: {
-          identifier,
-          endpoint,
-        },
-      },
-      create: {
-        identifier,
-        endpoint,
-        requests: 1,
-        windowStart: now,
-        expiresAt: new Date(now.getTime() + windowMs),
-      },
-      update: {
-        requests: {
-          increment: 1,
-        },
-      },
-    });
+    const expiresAt = new Date(now.getTime() + windowMs);
 
-    if (updatedLimit.windowStart < windowStart) {
-      // If the window has expired, reset the record.
-      await db.rateLimit.update({
-        where: {
-          id: updatedLimit.id,
-        },
-        data: {
-          requests: 1,
-          windowStart: now,
-          expiresAt: new Date(now.getTime() + windowMs),
-        },
-      });
+    // Atomically increment the request count, handling window expiration
+    // in a single query to prevent TOCTOU race conditions.
+    const results = await db.$queryRaw<{ requests: number; expiresAt: Date; windowStart: Date }[]>`
+      INSERT INTO rate_limits (identifier, endpoint, requests, "windowStart", "expiresAt", "updatedAt")
+      VALUES (${identifier}, ${endpoint}, 1, ${now}, ${expiresAt}, NOW())
+      ON CONFLICT (identifier, endpoint)
+      DO UPDATE SET
+        requests = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN 1
+          ELSE rate_limits.requests + 1
+        END,
+        "windowStart" = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN ${now}
+          ELSE rate_limits."windowStart"
+        END,
+        "expiresAt" = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN ${expiresAt}
+          ELSE rate_limits."expiresAt"
+        END,
+        "updatedAt" = NOW()
+      RETURNING *;
+    `;
 
-      return {
-        allowed: true,
-        remaining: maxRequests - 1,
-        resetTime: new Date(now.getTime() + windowMs),
-      };
-    }
+    const updatedLimit = results[0];
 
     if (updatedLimit.requests > maxRequests) {
       // Limit exceeded.
