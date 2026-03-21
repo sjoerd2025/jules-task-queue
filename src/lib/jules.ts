@@ -676,7 +676,8 @@ export async function processTaskRetry(taskOrId: number | JulesTask): Promise<bo
     );
     return true;
   } catch (error) {
-    logger.error({ error }, `Failed to process retry for task ${taskId}:`);
+    const taskIdStr = typeof taskOrId === "number" ? taskOrId : taskOrId.id;
+    logger.error({ error }, `Failed to process retry for task ${taskIdStr}:`);
     return false;
   }
 }
