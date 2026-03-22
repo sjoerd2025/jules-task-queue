@@ -594,18 +594,17 @@ export async function processWorkflowDecision(
  * Process retry for a flagged task (enhanced with stored repo info)
  */
 export async function processTaskRetry(taskOrId: number | JulesTask): Promise<boolean> {
+  const taskId: number = typeof taskOrId === "number" ? taskOrId : taskOrId.id;
+
   try {
     let task: JulesTask | null;
-    let taskId: number;
 
     if (typeof taskOrId === "number") {
-      taskId = taskOrId;
       task = await db.julesTask.findUnique({
         where: { id: taskId },
       });
     } else {
       task = taskOrId;
-      taskId = task.id;
     }
 
     if (!task || !task.flaggedForRetry) {

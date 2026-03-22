@@ -244,27 +244,44 @@ export class InstallationService {
    */
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
-    const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Use bounded concurrent execution to significantly reduce total synchronization time
+    // without triggering GitHub API rate limits or connection pool exhaustion.
+    const CONCURRENCY_LIMIT = 10;
+    const results: Array<{
+      installationId: number;
+      success: boolean;
+      data?: unknown;
+      error?: string;
+    }> = [];
+
+    for (let i = 0; i < installations.length; i += CONCURRENCY_LIMIT) {
+      const batch = installations.slice(i, i + CONCURRENCY_LIMIT);
+
+      const batchResults = await Promise.all(
+        batch.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(installation.id);
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        })
+      );
+
+      results.push(...batchResults);
     }
 
     return results;
