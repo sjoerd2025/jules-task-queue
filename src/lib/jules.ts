@@ -593,7 +593,9 @@ export async function processWorkflowDecision(
 /**
  * Process retry for a flagged task (enhanced with stored repo info)
  */
-export async function processTaskRetry(taskOrId: number | JulesTask): Promise<boolean> {
+export async function processTaskRetry(
+  taskOrId: number | JulesTask,
+): Promise<boolean> {
   try {
     let task: JulesTask | null;
     let taskId: number;
@@ -676,7 +678,8 @@ export async function processTaskRetry(taskOrId: number | JulesTask): Promise<bo
     );
     return true;
   } catch (error) {
-    logger.error({ error }, `Failed to process retry for task ${taskId}:`);
+    const errorTaskId = typeof taskOrId === "number" ? taskOrId : taskOrId.id;
+    logger.error({ error }, `Failed to process retry for task ${errorTaskId}:`);
     return false;
   }
 }
