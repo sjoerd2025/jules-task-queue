@@ -112,15 +112,26 @@ export class InstallationService {
   /**
    * Sync installation data with GitHub
    */
-  async syncInstallation(installationId: number) {
+  async syncInstallation(
+    installationId: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prefetchedInstallationData?: any,
+  ) {
     try {
       logger.info(`Syncing installation ${installationId} with GitHub`);
 
       // Check if installation exists in GitHub
-      const installations = await githubAppClient.getInstallations();
-      const githubInstallation = installations.find(
-        (inst: { id: number }) => inst.id === installationId,
-      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let githubInstallation: any;
+
+      if (prefetchedInstallationData !== undefined) {
+        githubInstallation = prefetchedInstallationData;
+      } else {
+        const installations = await githubAppClient.getInstallations();
+        githubInstallation = installations.find(
+          (inst: { id: number }) => inst.id === installationId,
+        );
+      }
 
       if (!githubInstallation || !githubInstallation.account) {
         // Installation was removed from GitHub or has no account, mark as suspended
@@ -244,27 +255,64 @@ export class InstallationService {
    */
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
-    const results = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results: any[] = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Fetch all installations from GitHub once to avoid N+1 API calls
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let githubInstallations: any[] = [];
+    try {
+      githubInstallations = await githubAppClient.getInstallations();
+    } catch (error) {
+      logger.error(
+        { error },
+        "Failed to fetch installations from GitHub for syncAllInstallations",
+      );
+      // Fallback to fetching individually if bulk fetch fails
+      githubInstallations = [];
+    }
+
+    // Process installations in chunks to respect rate limits while improving performance
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < installations.length; i += BATCH_SIZE) {
+      const batch = installations.slice(i, i + BATCH_SIZE);
+
+      const batchResults = await Promise.all(
+        batch.map(async (installation) => {
+          try {
+            // Find prefetched data if available, or pass undefined to fall back to individual fetch
+            const prefetchedData =
+              githubInstallations.length > 0
+                ? githubInstallations.find(
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (inst: any) => inst.id === installation.id,
+                  ) || null
+                : undefined;
+
+            const synced = await this.syncInstallation(
+              installation.id,
+              prefetchedData,
+            );
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        }),
+      );
+
+      results.push(...batchResults);
     }
 
     return results;
