@@ -1,3 +1,6 @@
 ## 2026-03-07 - Optimize rate-limiter.ts to prevent TOCTOU race condition
 **Learning:** Performance optimizations should prioritize atomic database operations (e.g., Prisma `upsert`) where appropriate instead of the read-modify-write pattern (`findUnique` followed by `create` or `update`) to prevent unnecessary database round-trips and Time-of-Check to Time-of-Use (TOCTOU) race conditions.
 **Action:** The database operations in `src/lib/rate-limiter.ts` should use `upsert` followed by `update` to optimize performance and prevent race conditions.
+## 2024-04-05 - N+1 Query Fix in Webhooks
+**Learning:** In webhook event processors, mapping arrays of payload items to concurrent `Promise.all` database calls creates an N+1 query vulnerability that can easily cause connection pool exhaustion or database lockups under high webhook volume. This codebase's schema natively supports query batching using the `in` operator (e.g., `repositoryId: { in: [...] }`).
+**Action:** When handling bulk item arrays (like repository additions/removals) in webhook events, always prioritize using `updateMany` or `deleteMany` with array payload mapping instead of executing an update for each individual item concurrently.
