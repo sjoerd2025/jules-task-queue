@@ -112,15 +112,30 @@ export class InstallationService {
   /**
    * Sync installation data with GitHub
    */
-  async syncInstallation(installationId: number) {
+  async syncInstallation(installationId: number, preFetchedInstallation?: {
+    id: number;
+    account?: {
+      id: number;
+      login: string;
+      type: string;
+    };
+    target_type?: string;
+    permissions?: Record<string, string>;
+    events?: string[];
+    single_file_name?: string | null;
+    repository_selection?: string;
+    suspended_at?: string | null;
+    suspended_by?: { login: string } | null;
+  } | null) {
     try {
       logger.info(`Syncing installation ${installationId} with GitHub`);
 
       // Check if installation exists in GitHub
-      const installations = await githubAppClient.getInstallations();
-      const githubInstallation = installations.find(
-        (inst: { id: number }) => inst.id === installationId,
-      );
+      const githubInstallation = preFetchedInstallation !== undefined
+        ? preFetchedInstallation
+        : (await githubAppClient.getInstallations()).find(
+            (inst: { id: number }) => inst.id === installationId,
+          );
 
       if (!githubInstallation || !githubInstallation.account) {
         // Installation was removed from GitHub or has no account, mark as suspended
@@ -243,28 +258,49 @@ export class InstallationService {
    * Sync all installations with GitHub
    */
   async syncAllInstallations() {
-    const installations = await this.getActiveInstallations();
+    const activeInstallations = await this.getActiveInstallations();
     const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
+    try {
+      // Pre-fetch all GitHub installations once to avoid N+1 API requests
+      const githubInstallations = await githubAppClient.getInstallations();
+
+      // Use bounded concurrent execution (chunk size of 10)
+      const CHUNK_SIZE = 10;
+      for (let i = 0; i < activeInstallations.length; i += CHUNK_SIZE) {
+        const chunk = activeInstallations.slice(i, i + CHUNK_SIZE);
+
+        const chunkPromises = chunk.map(async (installation) => {
+          try {
+            const preFetchedInst = githubInstallations.find(
+              (inst: { id: number }) => inst.id === installation.id,
+            ) || null;
+
+            const synced = await this.syncInstallation(installation.id, preFetchedInst);
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
         });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+
+        const chunkResults = await Promise.all(chunkPromises);
+        results.push(...chunkResults);
       }
+    } catch (error) {
+      logger.error({ error }, "Failed to fetch installations from GitHub during syncAllInstallations");
+      throw error;
     }
 
     return results;
