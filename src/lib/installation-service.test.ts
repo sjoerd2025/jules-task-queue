@@ -125,24 +125,22 @@ describe('InstallationService', () => {
 
   describe('cleanupSuspendedInstallations', () => {
     it('should cleanup suspended installations correctly', async () => {
-      const mockSuspendedInstallations = [
-        { id: 1 },
-        { id: 2 },
-        { id: 3 },
-      ];
-
-      mockDb.gitHubInstallation.findMany.mockResolvedValue(mockSuspendedInstallations);
       mockDb.gitHubInstallation.deleteMany.mockResolvedValue({ count: 3 });
 
       await installationService.cleanupSuspendedInstallations(30);
 
-      expect(mockDb.gitHubInstallation.findMany).toHaveBeenCalled();
-
-      // After optimization, deleteMany should be called once with all IDs
       expect(mockDb.installationRepository.deleteMany).toHaveBeenCalledWith({
-        where: { installationId: { in: [1, 2, 3] } },
+        where: {
+          installation: {
+            suspendedAt: { lte: expect.any(Date) }
+          }
+        },
       });
-      expect(mockDb.gitHubInstallation.deleteMany).toHaveBeenCalled();
+      expect(mockDb.gitHubInstallation.deleteMany).toHaveBeenCalledWith({
+        where: {
+          suspendedAt: { lte: expect.any(Date) }
+        },
+      });
     });
   });
 });
