@@ -355,24 +355,18 @@ export class InstallationService {
       Date.now() - olderThanDays * 24 * 60 * 60 * 1000,
     );
 
-    // Find installations suspended longer than cutoff
-    const suspendedInstallations = await db.gitHubInstallation.findMany({
+    // Delete associated repositories first (due to foreign key constraints)
+    // Optimized: Use a single query pushing relation logic to the database
+    // instead of fetching IDs into app memory
+    await db.installationRepository.deleteMany({
       where: {
-        suspendedAt: {
-          lte: cutoffDate,
+        installation: {
+          suspendedAt: {
+            lte: cutoffDate,
+          },
         },
       },
-      select: { id: true },
     });
-
-    // Delete associated repositories first (due to foreign key constraints)
-    // Optimized: Use a single query to delete repositories for all suspended installations
-    if (suspendedInstallations.length > 0) {
-      const installationIds = suspendedInstallations.map((i) => i.id);
-      await db.installationRepository.deleteMany({
-        where: { installationId: { in: installationIds } },
-      });
-    }
 
     // Delete the installations
     const deletedCount = await db.gitHubInstallation.deleteMany({
