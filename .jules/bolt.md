@@ -1,3 +1,6 @@
 ## 2026-03-07 - Optimize rate-limiter.ts to prevent TOCTOU race condition
 **Learning:** Performance optimizations should prioritize atomic database operations (e.g., Prisma `upsert`) where appropriate instead of the read-modify-write pattern (`findUnique` followed by `create` or `update`) to prevent unnecessary database round-trips and Time-of-Check to Time-of-Use (TOCTOU) race conditions.
 **Action:** The database operations in `src/lib/rate-limiter.ts` should use `upsert` followed by `update` to optimize performance and prevent race conditions.
+## 2026-03-09 - N+1 GitHub API call in `syncAllInstallations`
+**Learning:** `syncAllInstallations` was calling `syncInstallation` in a sequential loop, and `syncInstallation` fetched the *entire* list of installations from GitHub (`githubAppClient.getInstallations()`) on every single call, creating a severe N+1 API bottleneck.
+**Action:** When a method processes multiple items that depend on a common external resource list, fetch the resource list once at the beginning of the process and pass down the pre-fetched data to the individual processing methods. Also, use chunked `Promise.all` mapping instead of sequential loops for network/DB-bound batch processing.
