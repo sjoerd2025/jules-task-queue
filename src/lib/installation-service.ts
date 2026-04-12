@@ -111,13 +111,19 @@ export class InstallationService {
 
   /**
    * Sync installation data with GitHub
+   * @param prefetchedInstallations Optional prefetched installations to avoid N+1 API calls
    */
-  async syncInstallation(installationId: number) {
+  async syncInstallation(
+    installationId: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prefetchedInstallations?: any[],
+  ) {
     try {
       logger.info(`Syncing installation ${installationId} with GitHub`);
 
       // Check if installation exists in GitHub
-      const installations = await githubAppClient.getInstallations();
+      const installations =
+        prefetchedInstallations || (await githubAppClient.getInstallations());
       const githubInstallation = installations.find(
         (inst: { id: number }) => inst.id === installationId,
       );
@@ -246,25 +252,48 @@ export class InstallationService {
     const installations = await this.getActiveInstallations();
     const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Pre-fetch all GitHub installations once to avoid N+1 API queries
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let githubInstallations: any[] = [];
+    try {
+      githubInstallations = await githubAppClient.getInstallations();
+    } catch (error) {
+      logger.error({ error }, "Failed to pre-fetch installations from GitHub");
+      // Fallback: will just let each call fetch it individually, but ideally this succeeds
+    }
+
+    // Process installations in concurrent chunks to avoid rate limits and connection pooling issues
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < installations.length; i += CHUNK_SIZE) {
+      const chunk = installations.slice(i, i + CHUNK_SIZE);
+
+      const chunkResults = await Promise.all(
+        chunk.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(
+              installation.id,
+              githubInstallations.length > 0 ? githubInstallations : undefined,
+            );
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        }),
+      );
+
+      results.push(...chunkResults);
     }
 
     return results;
