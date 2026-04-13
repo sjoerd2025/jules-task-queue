@@ -123,6 +123,69 @@ describe('InstallationService', () => {
     });
   });
 
+  describe('syncAllInstallations', () => {
+    it('should fetch all installations once and process in batches', async () => {
+      const mockActiveInstallations = [
+        { id: 1, accountLogin: 'org1' },
+        { id: 2, accountLogin: 'org2' },
+        { id: 3, accountLogin: 'org3' },
+      ];
+
+      const mockGithubInstallations = [
+        { id: 1, account: { login: 'org1' } },
+        { id: 2, account: { login: 'org2' } },
+        { id: 3, account: { login: 'org3' } },
+      ];
+
+      // Mock getting active installations from DB
+      mockDb.gitHubInstallation.findMany.mockResolvedValueOnce(mockActiveInstallations);
+
+      // Mock GitHub API returning all installations
+      mockGithubAppClient.getInstallations.mockResolvedValue(mockGithubInstallations);
+
+      // Spy on syncInstallation to avoid mocking everything internal to it, or mock it directly
+      const syncSpy = vi.spyOn(installationService, 'syncInstallation')
+        .mockResolvedValue(({} as // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any));
+
+      const results = await installationService.syncAllInstallations();
+
+      expect(mockGithubAppClient.getInstallations).toHaveBeenCalledTimes(1);
+
+      expect(syncSpy).toHaveBeenCalledTimes(3);
+      expect(syncSpy).toHaveBeenCalledWith(1, mockGithubInstallations[0]);
+      expect(syncSpy).toHaveBeenCalledWith(2, mockGithubInstallations[1]);
+      expect(syncSpy).toHaveBeenCalledWith(3, mockGithubInstallations[2]);
+
+      expect(results.length).toBe(3);
+      expect(results[0].success).toBe(true);
+
+      syncSpy.mockRestore();
+    });
+
+    it('should continue if fetching installations fails', async () => {
+      const mockActiveInstallations = [
+        { id: 1, accountLogin: 'org1' },
+      ];
+
+      mockDb.gitHubInstallation.findMany.mockResolvedValueOnce(mockActiveInstallations);
+      mockGithubAppClient.getInstallations.mockRejectedValue(new Error('API failure'));
+
+      const syncSpy = vi.spyOn(installationService, 'syncInstallation')
+        .mockResolvedValue(({} as // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any));
+
+      const results = await installationService.syncAllInstallations();
+
+      expect(mockGithubAppClient.getInstallations).toHaveBeenCalledTimes(1);
+      // It should pass undefined for pre-fetched data
+      expect(syncSpy).toHaveBeenCalledWith(1, undefined);
+      expect(results.length).toBe(1);
+
+      syncSpy.mockRestore();
+    });
+  });
+
   describe('cleanupSuspendedInstallations', () => {
     it('should cleanup suspended installations correctly', async () => {
       const mockSuspendedInstallations = [
