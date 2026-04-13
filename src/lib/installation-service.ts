@@ -111,16 +111,22 @@ export class InstallationService {
 
   /**
    * Sync installation data with GitHub
+   * @param installationId The ID of the installation to sync
+   * @param preFetchedInstallation Optional pre-fetched installation data to avoid N+1 API calls. Use null if explicitly fetched but not found.
    */
-  async syncInstallation(installationId: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async syncInstallation(installationId: number, preFetchedInstallation?: any | null) {
     try {
       logger.info(`Syncing installation ${installationId} with GitHub`);
 
       // Check if installation exists in GitHub
-      const installations = await githubAppClient.getInstallations();
-      const githubInstallation = installations.find(
-        (inst: { id: number }) => inst.id === installationId,
-      );
+      let githubInstallation = preFetchedInstallation;
+      if (githubInstallation === undefined) {
+        const installations = await githubAppClient.getInstallations();
+        githubInstallation = installations.find(
+          (inst: { id: number }) => inst.id === installationId,
+        ) || null;
+      }
 
       if (!githubInstallation || !githubInstallation.account) {
         // Installation was removed from GitHub or has no account, mark as suspended
@@ -246,25 +252,50 @@ export class InstallationService {
     const installations = await this.getActiveInstallations();
     const results = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Pre-fetch all installations to avoid N+1 API calls
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let githubInstallations: any[] | null = null;
+    try {
+      githubInstallations = await githubAppClient.getInstallations();
+    } catch (error) {
+      logger.error({ error }, "Failed to fetch installations from GitHub API");
+      // Continue anyway, syncInstallation will try to fetch individually if pre-fetched data is missing
+    }
+
+    // Process in chunks to limit concurrency and avoid rate limits/memory issues
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < installations.length; i += BATCH_SIZE) {
+      const batch = installations.slice(i, i + BATCH_SIZE);
+      const batchPromises = batch.map(async (installation) => {
+        try {
+          const githubInstallation = githubInstallations
+            ? githubInstallations.find((inst) => inst.id === installation.id) || null
+            : undefined;
+
+          const synced = await this.syncInstallation(
+            installation.id,
+            githubInstallation,
+          );
+          return {
+            installationId: installation.id,
+            success: true,
+            data: synced,
+          };
+        } catch (error) {
+          logger.error(
+            { error },
+            `Failed to sync installation ${installation.id}`,
+          );
+          return {
+            installationId: installation.id,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
     }
 
     return results;
