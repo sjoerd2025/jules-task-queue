@@ -1,3 +1,7 @@
 ## 2026-03-07 - Optimize rate-limiter.ts to prevent TOCTOU race condition
 **Learning:** Performance optimizations should prioritize atomic database operations (e.g., Prisma `upsert`) where appropriate instead of the read-modify-write pattern (`findUnique` followed by `create` or `update`) to prevent unnecessary database round-trips and Time-of-Check to Time-of-Use (TOCTOU) race conditions.
 **Action:** The database operations in `src/lib/rate-limiter.ts` should use `upsert` followed by `update` to optimize performance and prevent race conditions.
+
+## 2024-05-18 - [GitHub API N+1 Mitigation via Local Cache]
+**Learning:** In a multi-installation webhook processor, identifying which installation manages a given repository (`findInstallationForRepo`) can trigger extreme N+1 external API calls (fetching all installations, then paginating through repositories for each) when processing high-volume label webhooks. This creates severe performance bottlenecks and massive rate limit consumption.
+**Action:** Implemented a "fast path" caching strategy leveraging the existing synchronized database state (`db.installationRepository`). By querying the local database first to determine installation ownership before falling back to external API discovery, the O(N) external requests are reduced to a single, sub-millisecond local query in the vast majority of cases. Always prioritize local synchronized state over remote discovery queries.
