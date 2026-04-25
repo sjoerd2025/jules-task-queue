@@ -2,6 +2,7 @@ import { env, hasGitHubApp } from "@/lib/env";
 import { App } from "@octokit/app";
 import { Octokit } from "@octokit/rest";
 import logger from "@/lib/logger";
+import { db } from "@/server/db";
 
 /**
  * GitHub App client for installation-based authentication
@@ -141,6 +142,17 @@ class GitHubAppClient {
     repo: string,
   ): Promise<number | null> {
     try {
+      // 1. Fast-path: Check local database first to prevent N+1 GitHub API calls
+      const localRepo = await db.installationRepository.findFirst({
+        where: { owner, name: repo },
+        select: { installationId: true },
+      });
+
+      if (localRepo) {
+        return localRepo.installationId;
+      }
+
+      // 2. Slow-path: Fallback to GitHub API
       const installations = await this.getInstallations();
 
       for (const installation of installations) {
