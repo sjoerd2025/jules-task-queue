@@ -280,17 +280,18 @@ async function handleInstallationRepositoriesEvent(
     });
   } else if (action === "removed") {
     await db.$transaction(async (prisma) => {
-      await Promise.all(
-        repositories.map((repo: GitHubWebhookRepository) =>
-          prisma.installationRepository.updateMany({
-            where: {
-              installationId: installation.id,
-              repositoryId: BigInt(repo.id),
+      if (repositories.length > 0) {
+        // Optimized: Use a single updateMany with the 'in' operator to prevent N+1 queries during bulk removal
+        await prisma.installationRepository.updateMany({
+          where: {
+            installationId: installation.id,
+            repositoryId: {
+              in: repositories.map((repo: GitHubWebhookRepository) => BigInt(repo.id)),
             },
-            data: { removedAt: new Date() },
-          }),
-        ),
-      );
+          },
+          data: { removedAt: new Date() },
+        });
+      }
 
       logger.info(
         `Removed ${repositories.length} repositories from installation ${installation.id}`,
