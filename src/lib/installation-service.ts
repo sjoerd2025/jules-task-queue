@@ -112,12 +112,18 @@ export class InstallationService {
   /**
    * Sync installation data with GitHub
    */
-  async syncInstallation(installationId: number) {
+  async syncInstallation(
+    installationId: number,
+    // Optimized: Accept pre-fetched installations to prevent N+1 API calls during bulk sync
+    preFetchedInstallations?: any[] | null,
+  ) {
     try {
       logger.info(`Syncing installation ${installationId} with GitHub`);
 
       // Check if installation exists in GitHub
-      const installations = await githubAppClient.getInstallations();
+      // Optimized: Use pre-fetched list if available, otherwise fetch from API
+      const installations =
+        preFetchedInstallations || (await githubAppClient.getInstallations());
       const githubInstallation = installations.find(
         (inst: { id: number }) => inst.id === installationId,
       );
@@ -244,27 +250,48 @@ export class InstallationService {
    */
   async syncAllInstallations() {
     const installations = await this.getActiveInstallations();
-    const results = [];
+    const results: any[] = [];
 
-    for (const installation of installations) {
-      try {
-        const synced = await this.syncInstallation(installation.id);
-        results.push({
-          installationId: installation.id,
-          success: true,
-          data: synced,
-        });
-      } catch (error) {
-        logger.error(
-          { error },
-          `Failed to sync installation ${installation.id}`,
-        );
-        results.push({
-          installationId: installation.id,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Optimized: Pre-fetch all installations once to prevent N+1 API calls in the loop
+    let githubInstallations: any[] | null = null;
+    try {
+      githubInstallations = await githubAppClient.getInstallations();
+    } catch (error) {
+      logger.error({ error }, "Failed to pre-fetch installations from GitHub");
+      // Continue without pre-fetching, syncInstallation will fallback to individual fetches
+    }
+
+    // Optimized: Use bounded concurrency (batch size 10) instead of sequential loop
+    // to significantly improve performance while respecting rate limits
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < installations.length; i += BATCH_SIZE) {
+      const batch = installations.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (installation) => {
+          try {
+            const synced = await this.syncInstallation(
+              installation.id,
+              githubInstallations,
+            );
+            return {
+              installationId: installation.id,
+              success: true,
+              data: synced,
+            };
+          } catch (error) {
+            logger.error(
+              { error },
+              `Failed to sync installation ${installation.id}`,
+            );
+            return {
+              installationId: installation.id,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        }),
+      );
+      results.push(...batchResults);
     }
 
     return results;
