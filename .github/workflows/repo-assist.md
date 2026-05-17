@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   A friendly repository assistant that runs daily to support contributors and maintainers.
   Can also be triggered on-demand via '/repo-assist <instructions>' to perform specific tasks.

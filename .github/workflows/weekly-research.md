@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   This workflow performs research to  provides industry insights and competitive analysis.
   Reviews recent code, issues, PRs, industry news, and trends to create comprehensive

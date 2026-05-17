@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   This workflow performs strategic project planning by maintaining and updating the project roadmap.
   Analyzes repository state including open issues, PRs, and completed work to formulate

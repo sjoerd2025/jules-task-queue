@@ -33,8 +33,8 @@
 
 name: "Daily Accessibility Review"
 "on":
-  schedule:
-  - cron: "25 8 * * *"
+  # schedule:
+  # - cron: "25 8 * * *"
     # Friendly format: daily (scattered)
   workflow_dispatch:
 

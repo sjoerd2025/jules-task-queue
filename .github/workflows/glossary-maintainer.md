@@ -1,4 +1,5 @@
 ---
+disabled: true
 name: Glossary Maintainer
 description: Maintains and updates the documentation glossary based on codebase changes
 on:

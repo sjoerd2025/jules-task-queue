@@ -32,8 +32,8 @@
 
 name: "Daily QA"
 "on":
-  schedule:
-  - cron: "42 2 * * *"
+  # schedule:
+  # - cron: "42 2 * * *"
     # Friendly format: daily (scattered)
   workflow_dispatch:
 

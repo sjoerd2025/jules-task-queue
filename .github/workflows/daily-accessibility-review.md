@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   This workflow is an automated accessibility compliance checker for web applications.
   Reviews websites against WCAG 2.2 guidelines using Playwright browser automation.

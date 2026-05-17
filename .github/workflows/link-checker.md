@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: Daily automated link checker that finds and fixes broken links in documentation files
 on:
   schedule: daily on weekdays

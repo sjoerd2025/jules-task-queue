@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: |
   This workflow keeps docs synchronized with code changes.
   Triggered on every push to main, it analyzes diffs to identify changed entities and

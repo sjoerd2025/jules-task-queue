@@ -63,8 +63,8 @@ name: "Daily Test Improver"
     types:
     - created
     - edited
-  schedule:
-  - cron: "9 22 * * *"
+  # schedule:
+  # - cron: "9 22 * * *"
   workflow_dispatch: null
 
 permissions: {}

@@ -66,8 +66,8 @@ name: "Repo Assist"
     types:
     - created
     - edited
-  schedule:
-  - cron: "26 3 * * *"
+  # schedule:
+  # - cron: "26 3 * * *"
   workflow_dispatch: null
 
 permissions: {}

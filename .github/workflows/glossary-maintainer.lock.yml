@@ -29,8 +29,8 @@
 
 name: "Glossary Maintainer"
 "on":
-  schedule:
-  - cron: "1 12 * * 1-5"
+  # schedule:
+  # - cron: "1 12 * * 1-5"
     # Friendly format: daily on weekdays (scattered)
   workflow_dispatch:
 

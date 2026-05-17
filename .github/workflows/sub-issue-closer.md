@@ -1,4 +1,5 @@
 ---
+disabled: true
 description: Scheduled workflow that recursively closes parent issues when all sub-issues are 100% complete
 name: Sub-Issue Closer
 on:
