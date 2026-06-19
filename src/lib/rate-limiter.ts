@@ -40,46 +40,37 @@ export async function checkRateLimit(
         );
     }
 
-    const updatedLimit = await db.rateLimit.upsert({
-      where: {
-        identifier_endpoint: {
-          identifier,
-          endpoint,
-        },
-      },
-      create: {
-        identifier,
-        endpoint,
-        requests: 1,
-        windowStart: now,
-        expiresAt: new Date(now.getTime() + windowMs),
-      },
-      update: {
-        requests: {
-          increment: 1,
-        },
-      },
-    });
+    // Use an atomic PostgreSQL query to perform UPSERT with conditional updates.
+    // This prevents TOCTOU (Time of Check to Time of Use) race conditions,
+    // avoiding the scenario where concurrent requests both reset an expired window.
+    // By doing this in a single database round-trip, we significantly improve performance.
+    const expiresAt = new Date(now.getTime() + windowMs);
 
-    if (updatedLimit.windowStart < windowStart) {
-      // If the window has expired, reset the record.
-      await db.rateLimit.update({
-        where: {
-          id: updatedLimit.id,
-        },
-        data: {
-          requests: 1,
-          windowStart: now,
-          expiresAt: new Date(now.getTime() + windowMs),
-        },
-      });
+    // Note: Prisma returns an array from queryRaw
+    const result = await db.$queryRaw<
+      Array<{ requests: number; expiresAt: Date; windowStart: Date }>
+    >`
+      INSERT INTO rate_limits (identifier, endpoint, requests, "windowStart", "expiresAt", "updatedAt")
+      VALUES (${identifier}, ${endpoint}, 1, ${now}, ${expiresAt}, ${now})
+      ON CONFLICT (identifier, endpoint)
+      DO UPDATE SET
+        requests = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN 1
+          ELSE rate_limits.requests + 1
+        END,
+        "windowStart" = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN ${now}
+          ELSE rate_limits."windowStart"
+        END,
+        "expiresAt" = CASE
+          WHEN rate_limits."windowStart" < ${windowStart} THEN ${expiresAt}
+          ELSE rate_limits."expiresAt"
+        END,
+        "updatedAt" = ${now}
+      RETURNING requests, "expiresAt", "windowStart";
+    `;
 
-      return {
-        allowed: true,
-        remaining: maxRequests - 1,
-        resetTime: new Date(now.getTime() + windowMs),
-      };
-    }
+    const updatedLimit = result[0];
 
     if (updatedLimit.requests > maxRequests) {
       // Limit exceeded.
